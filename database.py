@@ -256,17 +256,23 @@ class DatabaseHandler:
 
     def obtener_tabla_ventas_completa(self):
         """
-        Calcula dinámicamente el DataFrame idéntico al que compartiste
-        enlazando Ventas + Abonos y generando Estados.
+        Calcula dinámicamente el DataFrame enlazando Ventas + Abonos y generando Estados.
+        (Optimizado para evitar el problema de N+1 queries en la Nube)
         """
         session = self.get_session()
         try:
-             ventas = session.query(Venta).all()
+             from sqlalchemy.orm import joinedload
+             # Traemos ventas con sus abonos en UNA sola ida (eager loading)
+             ventas = session.query(Venta).options(joinedload(Venta.abonos)).all()
+             # Traemos todos los usuarios en UNA sola ida para el diccionario
+             usuarios = session.query(Usuario).all()
+             user_dict = {u.email: u for u in usuarios}
+             
              datos_procesados = []
              
              for v in ventas:
-                 # Ventas sumatorias nativas
-                 abonos_query = session.query(Abono).filter_by(venta_id=v.id).all()
+                 # Ya no hay query aquí, usamos la data ya en memoria
+                 abonos_query = v.abonos
                  total_abonos = sum([a.monto_abono for a in abonos_query])
                  
                  # Dias ultimo abono
@@ -289,8 +295,8 @@ class DatabaseHandler:
                  saldo = v.monto_total - total_abonos
                  estado = "Pagado" if saldo <= 0 else "Adeudo"
                  
-                 # Quien lo vendio y su comision teórica
-                 vendedor = session.query(Usuario).filter_by(email=v.vendedor_email).first()
+                 # Busqueda súper rápida en memoria
+                 vendedor = user_dict.get(v.vendedor_email)
                  tasa = vendedor.tasa_comision if vendedor else 0.10
                  nombre_vendedor = vendedor.nombre if vendedor else "Desconocido"
                  
