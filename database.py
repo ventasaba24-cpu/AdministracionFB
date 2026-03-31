@@ -28,6 +28,7 @@ class Producto(Base):
     vendedor_email = Column(String(100), ForeignKey('usuarios.email', onupdate='CASCADE', ondelete='CASCADE'), nullable=False)
     stock = Column(Integer, default=0)
     precio = Column(Float, nullable=False)
+    costo_compra = Column(Float, default=0.0) # Costo de inversión que solo ve el admin
     
     __table_args__ = (UniqueConstraint('nombre', 'vendedor_email', name='_nombre_vendedor_uc'),)
 
@@ -44,6 +45,9 @@ class Venta(Base):
     cantidad = Column(Integer, default=1)
     # Total Venta
     monto_total = Column(Float, nullable=False)
+    
+    # Costo base de la venta congelado (para soportar cambios de precios futuros sin arruinar la historia)
+    costo_historico = Column(Float, default=0.0) 
     
     comision_cobrada = Column(Boolean, default=False) # Bandera que indica si el vendedor ya cobro los billetes físicos
     
@@ -150,6 +154,10 @@ class DatabaseHandler:
         """Sobreescribe el inventario de un vendedor específico basado en el DataFrame del UI."""
         session = self.get_session()
         try:
+            # Respaldar los costos de compra actuales (para no sobreescribirlos con $0 si es un vendedor quien guarda)
+            old_products = session.query(Producto).filter_by(vendedor_email=vendedor_email).all()
+            costos_map = {p.nombre: p.costo_compra for p in old_products}
+            
             # Borramos el previo stock de este vendedor
             session.query(Producto).filter_by(vendedor_email=vendedor_email).delete(synchronize_session=False)
             
@@ -158,11 +166,18 @@ class DatabaseHandler:
                 nombre = str(row.get('nombre', '')).strip()
                 if not nombre or pd.isna(row.get('nombre')):
                     continue
+                    
+                # Si el df trae "costo_compra" (Admin), úsalo. Si no (Vendedor), rescata el viejo (o 0.0).
+                costo_nuevo = row.get('costo_compra')
+                if pd.isna(costo_nuevo) or costo_nuevo is None:
+                    costo_nuevo = costos_map.get(nombre, 0.0)
+                    
                 nuevo_prod = Producto(
                     nombre=nombre,
                     vendedor_email=vendedor_email,
                     stock=int(row.get('stock', 0)),
-                    precio=float(row.get('precio', 0.0))
+                    precio=float(row.get('precio', 0.0)),
+                    costo_compra=float(costo_nuevo)
                 )
                 session.add(nuevo_prod)
             session.commit()
@@ -192,19 +207,25 @@ class DatabaseHandler:
     def registrar_venta(self, vendedor_email, cliente, producto, cantidad, precio_unitario):
         session = self.get_session()
         try:
+            # Traer producto antes para capturar su costo actual
+            mi_producto = session.query(Producto).filter_by(nombre=producto, vendedor_email=vendedor_email).first()
+            costo_unitario_actual = mi_producto.costo_compra if mi_producto else 0.0
+            
             monto_total = float(cantidad) * float(precio_unitario)
+            costo_total = float(cantidad) * float(costo_unitario_actual)
+            
             nueva_venta = Venta(
                 vendedor_email=vendedor_email,
                 cliente=cliente,
                 producto_nombre=producto,
                 cantidad=cantidad,
                 monto_total=monto_total,
+                costo_historico=costo_total, # Congelado para la historia de utilidades
                 fecha_venta=datetime.datetime.now()
             )
             session.add(nueva_venta)
             
             # Auto - Actualizar Stock
-            mi_producto = session.query(Producto).filter_by(nombre=producto, vendedor_email=vendedor_email).first()
             if mi_producto:
                 mi_producto.stock = max(0, mi_producto.stock - cantidad)
                 
@@ -304,6 +325,11 @@ class DatabaseHandler:
                  comision_ganada = v.monto_total * tasa
                  comision_pagada = "SI" if estado == "Pagado" else "NO"
                  
+                 # === METRICAS FINANCIERAS NETAS ===
+                 iva_generado = v.monto_total * 0.16
+                 costo_bases = getattr(v, "costo_historico", 0.0) # Asegurando compatibilidad con DBs previas
+                 utilidad_neta = v.monto_total - iva_generado - costo_bases - comision_ganada
+                 
                  fila = {
                      "ID_Venta": v.id,
                      "Fecha_Venta": v.fecha_venta.strftime("%d-%b-%Y") if v.fecha_venta else "",
@@ -312,10 +338,13 @@ class DatabaseHandler:
                      "Cliente": v.cliente,
                      "Producto": v.producto_nombre,
                      "Total_Venta": v.monto_total,
+                     "IVA_(16%)": iva_generado,
+                     "Costo_Producto": costo_bases,
                      "Total_Abono": total_abonos,
                      "Saldo_Pendiente": saldo,
                      "Estado_Venta": estado,
                      "Comision_Generada": comision_ganada,
+                     "Utilidad_Neta": utilidad_neta,
                      "Comision_Pagada": comision_pagada, # Concepto teórico de si ya superó el Adeudo
                      "Comision_Fisicamente_Cobrada": v.comision_cobrada
                  }
