@@ -118,30 +118,43 @@ def show():
 
     with tab3:
         st.subheader("Registrar Nuevo Abono a Cuenta")
-        # Buscar venta pendiente
-        venta_buscada = st.number_input("Buscar ID de Venta de Deudores", min_value=1, step=1)
-        if venta_buscada:
-            # Simulamos que lo encontramos leyendo en DB
-            df_ventas = db.obtener_tabla_ventas_completa()
-            venta = df_ventas[df_ventas["ID_Venta"] == venta_buscada]
+        # Desplegable inteligente de deudores
+        df_ventas = db.obtener_tabla_ventas_completa()
+        if not df_ventas.empty:
+            df_deudores = df_ventas[df_ventas["Estado_Venta"] == "Pendiente"]
             
-            if not venta.empty:
-                info = venta.iloc[0]
-                st.write(f"Venta seleccionada: **{venta_buscada}** (Cliente: {info['Cliente']}, Adeudo Restante: **${info['Saldo_Pendiente']:,.2f}**)")
-                
-                with st.form("abono_form"):
-                    monto_abono = st.number_input("Monto Recibido", min_value=1.0, step=100.0)
-                    metodo_pago = st.selectbox("Método de Pago", ["Efectivo", "Transferencia", "Tarjeta"])
-                    btn_abonar = st.form_submit_button("Confirmar Abono ($)")
+            if not df_deudores.empty:
+                opciones_ventas = {}
+                for idx, row in df_deudores.iterrows():
+                    desc = f"ID: {row['ID_Venta']} | Cliente: {row['Cliente']} | {row['Producto']} | Vend: {row['Nombre_Vendedor']} (Resta: ${row['Saldo_Pendiente']:,.2f})"
+                    opciones_ventas[row['ID_Venta']] = desc
                     
-                    if btn_abonar:
-                        exito, msj = db.registrar_abono(int(venta_buscada), monto_abono, metodo_pago)
-                        if exito:
-                            st.success(f"Abono por ${monto_abono:,.2f} registrado para la venta {venta_buscada}.")
-                        else:
-                            st.error(msj)
+                venta_buscada = st.selectbox(
+                    "Selecciona o busca la cuenta por cobrar",
+                    options=list(opciones_ventas.keys()),
+                    format_func=lambda x: opciones_ventas[x]
+                )
+                
+                if venta_buscada:
+                    venta = df_ventas[df_ventas["ID_Venta"] == venta_buscada]
+                    info = venta.iloc[0]
+                    
+                    with st.form("abono_form"):
+                        monto_abono = st.number_input("Monto Recibido", min_value=1.0, max_value=float(info['Saldo_Pendiente']), step=100.0)
+                        metodo_pago = st.selectbox("Método de Pago", ["Efectivo", "Transferencia", "Tarjeta"])
+                        btn_abonar = st.form_submit_button("Confirmar Abono ($)")
+                        
+                        if btn_abonar:
+                            exito, msj = db.registrar_abono(int(venta_buscada), monto_abono, metodo_pago)
+                            if exito:
+                                st.success(f"Abono por ${monto_abono:,.2f} registrado exitosamente.")
+                                st.rerun()
+                            else:
+                                st.error(msj)
             else:
-                st.warning("No se encontró esa ID de Venta en el sistema.")
+                st.success("¡Excelente! No hay ninguna cuenta con saldo pendiente por cobrar en el sistema.")
+        else:
+            st.info("Aún no hay ventas registradas.")
 
         st.markdown("---")
         st.subheader("Liquidación de Comisiones a Vendedores")
