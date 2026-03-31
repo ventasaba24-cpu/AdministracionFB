@@ -22,19 +22,34 @@ def show():
         st.subheader("Indicadores Clave de Desempeño")
         if not df_todas.empty:
             ventas_totales = df_todas["Total_Venta"].sum()
+            utilidad_neta = df_todas["Utilidad_Neta"].sum()
+            iva_generado = df_todas["IVA_(16%)"].sum()
+            costo_total = df_todas["Costo_Producto"].sum()
+            comisiones_totales = df_todas["Comision_Generada"].sum()
+            
             producto_top = df_todas.groupby("Producto")["Total_Venta"].sum().idxmax() if not df_todas.empty else "N/A"
             vendedor_top = df_todas.groupby("Nombre_Vendedor")["Total_Venta"].sum().idxmax() if not df_todas.empty else "N/A"
             
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Ventas Totales Mensuales", f"${ventas_totales:,.2f}")
-            col2.metric("Producto Top en Ingresos", producto_top)
-            col3.metric("Vendedor Top", vendedor_top)
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Ventas Totales Brutas", f"${ventas_totales:,.2f}")
+            col2.metric("✨ Utilidad Neta (Libre)", f"${utilidad_neta:,.2f}", "Ganancia Real", delta_color="normal")
+            col3.metric("IVA Reservado (16%)", f"${iva_generado:,.2f}")
+            col4.metric("Costos y Comisiones", f"${costo_total + comisiones_totales:,.2f}")
             
             st.markdown("---")
-            st.subheader("Comisiones por Vendedor")
+            c1, c2 = st.columns(2)
+            c1.info(f"🏆 **Producto Estrella en Ventas:** {producto_top}")
+            c2.success(f"🥇 **Mejor Vendedor(a):** {vendedor_top}")
+            
+            st.markdown("---")
+            st.markdown("---")
+            st.subheader("Desglose Financiero y Comisiones por Vendedor")
             df_com = df_todas.groupby("Nombre_Vendedor").agg({
                 "Total_Venta": "sum",
-                "Comision_Generada": "sum"
+                "Costo_Producto": "sum",
+                "IVA_(16%)": "sum",
+                "Comision_Generada": "sum",
+                "Utilidad_Neta": "sum"
             }).reset_index()
             st.dataframe(df_com, hide_index=True, width="stretch")
             
@@ -89,11 +104,11 @@ def show():
             # Cargar su inventario actual
             df_inventario = db.leer_inventario(vendedor_email=vendedor_sel_email)
             
-            # Formatear el Dataframe para el Data Editor
+            # Formatear el Dataframe para el Data Editor (Agregando Costo Compra por ser Admin)
             if not df_inventario.empty:
-                df_editor = df_inventario[["nombre", "precio", "stock"]].copy()
+                df_editor = df_inventario[["nombre", "precio", "costo_compra", "stock"]].copy() if "costo_compra" in df_inventario.columns else df_inventario[["nombre", "precio", "stock"]].copy()
             else:
-                df_editor = pd.DataFrame(columns=["nombre", "precio", "stock"])
+                df_editor = pd.DataFrame(columns=["nombre", "precio", "costo_compra", "stock"])
                 
             edited_df = st.data_editor(
                 df_editor, 
@@ -101,8 +116,9 @@ def show():
                 width="stretch",
                 column_config={
                     "nombre": st.column_config.TextColumn("Nombre del Producto", required=True),
-                    "precio": st.column_config.NumberColumn("Precio de Lista ($)", min_value=0.0, format="%.2f", required=False),
-                    "stock": st.column_config.NumberColumn("Unidades Físicas (Stock)", min_value=0, step=1, required=False)
+                    "precio": st.column_config.NumberColumn("Precio Final ($)", min_value=0.0, format="%.2f", required=False),
+                    "costo_compra": st.column_config.NumberColumn("Costo Compra ($)", min_value=0.0, format="%.2f", required=False),
+                    "stock": st.column_config.NumberColumn("Unidades Físicas", min_value=0, step=1, required=False)
                 }
             )
             
