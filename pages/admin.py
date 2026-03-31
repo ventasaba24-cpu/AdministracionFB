@@ -116,7 +116,8 @@ def show():
         else:
             st.warning("No hay vendedores registrados en el sistema.")
 
-        st.markdown("---")
+    with tab3:
+        st.subheader("Registrar Nuevo Abono a Cuenta")
         # Buscar venta pendiente
         venta_buscada = st.number_input("Buscar ID de Venta de Deudores", min_value=1, step=1)
         if venta_buscada:
