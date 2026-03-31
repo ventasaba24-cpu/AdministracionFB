@@ -25,7 +25,7 @@ class Producto(Base):
     __tablename__ = 'productos'
     id = Column(Integer, primary_key=True, autoincrement=True)
     nombre = Column(String(150), nullable=False)
-    vendedor_email = Column(String(100), ForeignKey('usuarios.email'), nullable=False)
+    vendedor_email = Column(String(100), ForeignKey('usuarios.email', onupdate='CASCADE', ondelete='CASCADE'), nullable=False)
     stock = Column(Integer, default=0)
     precio = Column(Float, nullable=False)
     
@@ -37,7 +37,7 @@ class Venta(Base):
     fecha_venta = Column(DateTime, default=datetime.datetime.utcnow)
     
     # Llaves foráneas
-    vendedor_email = Column(String(100), ForeignKey('usuarios.email'))
+    vendedor_email = Column(String(100), ForeignKey('usuarios.email', onupdate='CASCADE', ondelete='CASCADE'))
     cliente = Column(String(150), nullable=False)
     producto_nombre = Column(String(150), nullable=False) # Guardamos el nombre del producto en el momento de la venta
     
@@ -65,33 +65,33 @@ class Abono(Base):
 
 # --- CONTROLADOR CENTRAL DE BASE DE DATOS ---
 
+@st.cache_resource(show_spinner="Conectando base de datos...")
+def init_db_connection(default_path='sqlite:///erp_database.db'):
+    db_path = default_path
+    try:
+        if "SUPABASE_URL" in st.secrets:
+            db_url = st.secrets["SUPABASE_URL"]
+            if db_url.startswith("postgres://"):
+                db_url = db_url.replace("postgres://", "postgresql://", 1)
+            db_path = db_url
+    except Exception:
+        pass
+        
+    print(f"🔌 Inicializando pool de conexiones: {'[NUBE PostgreSQL]' if 'postgresql' in db_path else '[LOCAL SQLite]'}")
+    
+    if "sqlite" in db_path:
+        engine = create_engine(db_path, connect_args={"check_same_thread": False})
+    else:
+        engine = create_engine(db_path, pool_pre_ping=True, pool_size=5, max_overflow=10)
+        
+    Base.metadata.create_all(engine)
+    SessionMaker = sessionmaker(bind=engine)
+    return engine, SessionMaker
+
 class DatabaseHandler:
-    def __init__(self, db_path='sqlite:///erp_database.db'):
-        # Revisar si estamos en la nube (Streamlit o Secrets locales)
-        try:
-            if "SUPABASE_URL" in st.secrets:
-                db_url = st.secrets["SUPABASE_URL"]
-                # SQLAlchemy 1.4+ requiere 'postgresql://' no 'postgres://'
-                if db_url.startswith("postgres://"):
-                    db_url = db_url.replace("postgres://", "postgresql://", 1)
-                db_path = db_url
-        except Exception:
-            # Si no hay secretos, usar la base de datos local predeterminada
-            pass
-            
-        print(f"🔌 Conectando a la base de datos: {'[NUBE PostgreSQL]' if 'postgresql' in db_path else '[LOCAL SQLite]'}")
-        
-        # SQLite o PostgreSQL Engine args
-        if "sqlite" in db_path:
-            self.engine = create_engine(db_path, connect_args={"check_same_thread": False})
-        else:
-            self.engine = create_engine(db_path, pool_pre_ping=True)
-            
-        # Crear base si no existe
-        Base.metadata.create_all(self.engine)
-        
-        # Creador de Sesiones
-        self.Session = sessionmaker(bind=self.engine)
+    def __init__(self):
+        # Reutiliza el Pool de Conexión global guardado en RAM por Streamlit
+        self.engine, self.Session = init_db_connection()
         self.inicializar_datos_demo()
 
     def get_session(self):
