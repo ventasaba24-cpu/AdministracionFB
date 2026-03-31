@@ -1,0 +1,7 @@
+streamlit
+pandas
+SQLAlchemy
+# Agregamos la libreria para hablar con PostgreSQL (Supabase)
+psycopg2-binary
+# Manejador de cookies de usuario
+extra-streamlit-components
