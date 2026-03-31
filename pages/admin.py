@@ -121,7 +121,7 @@ def show():
         # Desplegable inteligente de deudores
         df_ventas = db.obtener_tabla_ventas_completa()
         if not df_ventas.empty:
-            df_deudores = df_ventas[df_ventas["Estado_Venta"] == "Pendiente"]
+            df_deudores = df_ventas[df_ventas["Estado_Venta"] == "Adeudo"]
             
             if not df_deudores.empty:
                 opciones_ventas = {}
