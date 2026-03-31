@@ -13,13 +13,13 @@ def show():
     from database import DatabaseHandler
     db = DatabaseHandler()
 
+    # 📌 PRE-CARGAR DATOS PESADOS UNA SOLA VEZ PARA OPTIMIZAR VELOCIDAD
+    df_todas = db.obtener_tabla_ventas_completa()
+    
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard de KPIs", "📦 Gestión de Inventario", "💵 Abonos y Pagos", "✉️ Invitar Vendedor"])
 
     with tab1:
         st.subheader("Indicadores Clave de Desempeño")
-        
-        df_todas = db.obtener_tabla_ventas_completa()
-        
         if not df_todas.empty:
             ventas_totales = df_todas["Total_Venta"].sum()
             producto_top = df_todas.groupby("Producto")["Total_Venta"].sum().idxmax() if not df_todas.empty else "N/A"
@@ -119,7 +119,8 @@ def show():
     with tab3:
         st.subheader("Registrar Nuevo Abono a Cuenta")
         # Desplegable inteligente de deudores
-        df_ventas = db.obtener_tabla_ventas_completa()
+        # df_todas lo reusamos de arriba
+        df_ventas = df_todas
         if not df_ventas.empty:
             df_deudores = df_ventas[df_ventas["Estado_Venta"] == "Adeudo"]
             
@@ -160,7 +161,6 @@ def show():
         st.subheader("Liquidación de Comisiones a Vendedores")
         st.write("Selecciona una venta liquidadada para registrar que ya le entregaste físicamente la comisión al vendedor.")
         
-        df_todas = db.obtener_tabla_ventas_completa()
         if not df_todas.empty:
             df_por_pagar_admin = df_todas[(df_todas["Estado_Venta"] == "Pagado") & (df_todas["Comision_Fisicamente_Cobrada"] == False)]
             
