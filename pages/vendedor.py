@@ -22,7 +22,33 @@ def mostrar_detalles_popup(row):
     st.markdown("---")
     # Nota: Mostramos Total_Venta en lugar de Costo_Producto para proteger la visibilidad del costo (COGS) según reglas del admin.
     st.markdown(f"**Precio Real de Venta (Lo que costó al cliente):** :green[${float(row['Total_Venta']):,.2f}]")
-    st.markdown(f"**Abonos Totales (Lo pagado):** :blue[${float(row['Total_Abono']):,.2f}]")
+    st.markdown(f"**Abonos Totales (Acumulado):** :blue[${float(row['Total_Abono']):,.2f}]")
+    
+    # 🔍 Extraer historial de abonos individuales para esta venta
+    from database import DatabaseHandler
+    import pandas as pd
+    db = DatabaseHandler()
+    df_abonos = db.leer_abonos()
+    
+    # Filtrar solo los abonos que pertenecen a esta Venta y ordenarlos por fecha
+    abonos_venta = df_abonos[df_abonos['venta_id'] == row['ID_Venta']].sort_values(by="fecha_abono")
+    
+    if not abonos_venta.empty:
+        st.markdown("<br>**🧾 Historial Individual de Abonos:**", unsafe_allow_html=True)
+        for estado_i, (idx, abono) in enumerate(abonos_venta.iterrows(), start=1):
+            fecha = abono['fecha_abono']
+            if pd.notna(fecha):
+                fecha_str = pd.to_datetime(fecha).strftime("%d/%b/%Y")
+            else:
+                fecha_str = "Fecha Desconocida"
+                
+            monto = float(abono['monto_abono'])
+            metodo = abono.get('metodo_pago', 'Efectivo')
+            st.markdown(f"👉 **Abono {estado_i}:** {fecha_str} | **${monto:,.2f}** *({metodo})*")
+    else:
+         st.markdown("<br>*(Este cliente aún no tiene registros de abonos individuales)*", unsafe_allow_html=True)
+
+    st.markdown("---")
     st.markdown(f"**Adeudo Actual Pendiente:** :red[${float(row['Saldo_Pendiente']):,.2f}]")
     
     if st.button("Cerrar Pop-up", use_container_width=True):
