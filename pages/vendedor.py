@@ -202,9 +202,9 @@ def show():
             
         col_g1, col_g2 = st.columns(2)
         with col_g1:
-            st.metric("🟢 Listas para Retirar", f"${comisiones_listas_global:,.2f} MXN")
+            st.metric("🟢 Comisiones Listas para Retirar", f"${comisiones_listas_global:,.2f} MXN")
         with col_g2:
-            st.metric("🔴 Pendientes (Adeudos)", f"${comisiones_pendientes_global:,.2f} MXN")
+            st.metric("🔵 Comisiones pendientes (Retirables al finalizar venta)", f"${comisiones_pendientes_global:,.2f} MXN")
             
         st.metric("🏆 Ventas Históricas Totales", f"${ventas_totales_global:,.2f} MXN")
         
