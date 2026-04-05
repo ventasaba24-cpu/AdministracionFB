@@ -19,6 +19,8 @@ class Usuario(Base):
     password = Column(String(255), nullable=False) # Extendido a 255 para soportar Hashes
     rol = Column(String(50), default='Vendedor') # 'Admin' o 'Vendedor'
     tasa_comision = Column(Float, default=0.10) # 10% por defecto basado en los datos brindados
+    patrocinador_email = Column(String(100), nullable=True) # Ligadura Multi-nivel
+    tipo_vendedor = Column(String(50), default='Crédito') # 'Crédito' o 'One-Shot'
 
 class IntentoSeguridad(Base):
     __tablename__ = 'intentos_seguridad'
@@ -104,6 +106,19 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
                  conn.commit()
         except:
              pass # Ya existe
+             
+        try:
+             with engine.connect() as conn:
+                 conn.execute(text("ALTER TABLE usuarios ADD COLUMN patrocinador_email VARCHAR(100)"))
+                 conn.commit()
+        except:
+             pass
+        try:
+             with engine.connect() as conn:
+                 conn.execute(text("ALTER TABLE usuarios ADD COLUMN tipo_vendedor VARCHAR(50) DEFAULT 'Crédito'"))
+                 conn.commit()
+        except:
+             pass
     else:
         # Entorno PostgreSQL (Nube Supabase)
         engine = create_engine(db_path, pool_pre_ping=True, pool_size=5, max_overflow=10)
@@ -114,6 +129,19 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
                  conn.commit()
         except:
              pass # Ya existe la columna
+             
+        try:
+             with engine.connect() as conn:
+                 conn.execute(text("ALTER TABLE usuarios ADD COLUMN patrocinador_email VARCHAR(100)"))
+                 conn.commit()
+        except:
+             pass
+        try:
+             with engine.connect() as conn:
+                 conn.execute(text("ALTER TABLE usuarios ADD COLUMN tipo_vendedor VARCHAR(50) DEFAULT 'Crédito'"))
+                 conn.commit()
+        except:
+             pass
         
     Base.metadata.create_all(engine)
     SessionMaker = sessionmaker(bind=engine, expire_on_commit=False)
@@ -605,7 +633,7 @@ class DatabaseHandler:
         finally:
             session.close()
 
-    def registrar_vendedor(self, nombre, email, password, comision=0.10):
+    def registrar_vendedor(self, nombre, email, password, comision=0.10, patrocinador_email=None, tipo_vendedor="Crédito"):
         session = self.get_session()
         try:
             nuevo = Usuario(
@@ -613,13 +641,53 @@ class DatabaseHandler:
                 email=email,
                 password=generate_password_hash(password),
                 rol="Vendedor",
-                tasa_comision=comision/100.0 # Guardar directo como tasa decimal (10% -> 0.10)
+                tasa_comision=comision/100.0, # Guardar directo como tasa decimal (10% -> 0.10)
+                patrocinador_email=patrocinador_email,
+                tipo_vendedor=tipo_vendedor
             )
             session.add(nuevo)
             session.commit()
-            return True, "Registrado en Base de Datos."
+            return True, "Vendedor registrado correctamente."
+        except IntegrityError:
+            session.rollback()
+            return False, "El correo ya está registrado."
         except Exception as e:
             session.rollback()
-            return False, str(e)
+            return False, f"Error desconocido: {e}"
+        finally:
+            session.close()
+
+    def leer_metricas_red(self, patrocinador_email):
+        """Calcula el rendimiento multinivel del 5% pagado por la empresa sobre ventas liquidadas de su equipo."""
+        session = self.get_session()
+        try:
+            usuarios = session.query(Usuario).filter_by(patrocinador_email=patrocinador_email).all()
+            if not usuarios:
+                return pd.DataFrame(), 0.0
+            
+            emails_red = [u.email for u in usuarios]
+            
+            query = session.query(Venta, Usuario).join(Usuario, Venta.vendedor_email == Usuario.email).filter(
+                Venta.vendedor_email.in_(emails_red),
+                Venta.comision_cobrada == True # Solo ventas 100% cerradas/liquidadas
+            )
+            
+            data = []
+            bono_total = 0.0
+            for v, u in query.all():
+                # El 5% se calcula del TOTAL de la venta completada
+                mi_5_porciento = float(v.total_venta) * 0.05
+                bono_total += mi_5_porciento
+                
+                data.append({
+                    "Vendedor": u.nombre,
+                    "ID_Venta": v.id_venta,
+                    "Cliente": v.cliente,
+                    "Total_Venta": v.total_venta,
+                    "Bono_Ganado": mi_5_porciento,
+                    "Fecha": v.fecha_venta.strftime("%Y-%m-%d") if v.fecha_venta else ""
+                })
+                
+            return pd.DataFrame(data), bono_total
         finally:
             session.close()
