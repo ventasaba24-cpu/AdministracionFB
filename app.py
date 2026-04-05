@@ -5,8 +5,8 @@ import pages.admin as admin_page
 
 # Page config debe ser el primer llamado a st en aplicación principal
 st.set_page_config(
-    page_title="Sistema ERP - Gestión de Ventas",
-    page_icon="🧴",
+    page_title="Portal Extranet de Colaboradores",
+    page_icon="🏢",
     layout="centered", # Centered funciona marginalmente mejor para enfocar contenido en celular
     initial_sidebar_state="collapsed" # Es crítico colapsar el menú lateral en celular por defecto para ahorrar y aprovechar pantalla
 )
