@@ -320,73 +320,100 @@ def show():
         tipo_correccion = st.radio("¿Qué tipo de registro deseas corregir?", ["Ventas", "Abonos"], horizontal=True)
         
         busqueda = st.text_input("🔍 Escribe para buscar...", placeholder="Por ejemplo: Maria, 45, o nombre de producto", key="buscador_admin")
+        termino = str(busqueda).lower() if busqueda else ""
         
-        if busqueda:
-            termino = str(busqueda).lower()
-            
-            if tipo_correccion == "Ventas":
-                if not df_todas.empty:
+        if tipo_correccion == "Ventas":
+            if not df_todas.empty:
+                df_filtro = df_todas
+                
+                if termino:
                     df_filtro = df_todas[
                         df_todas["Cliente"].astype(str).str.lower().str.contains(termino) |
                         df_todas["Nombre_Vendedor"].astype(str).str.lower().str.contains(termino) |
                         df_todas["ID_Venta"].astype(str).str.lower().str.contains(termino) |
                         df_todas["Producto"].astype(str).str.lower().str.contains(termino)
                     ]
-                    
-                    if not df_filtro.empty:
-                        for _, row in df_filtro.iterrows():
-                            st.markdown(f'''
-                            <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #3b82f6; margin-bottom: 10px;">
-                                <div style="font-weight:bold; font-size:16px;">Venta #{row['ID_Venta']} - {row['Cliente']}</div>
-                                <div style="color: #475569; font-size: 14px; margin-bottom: 0px;">{row['Nombre_Vendedor']} vendió <b>{row.get('Cantidad', 1)}x {row['Producto']}</b> por <b>${row['Total_Venta']:,.2f}</b></div>
-                            </div>
-                            ''', unsafe_allow_html=True)
-                            
-                            cc1, cc2 = st.columns(2)
-                            with cc1:
-                                if st.button("✏️ Editar Completo", key=f"edit_v_{row['ID_Venta']}", use_container_width=True):
-                                    df_inventario = db.leer_inventario(vendedor_email=row['Vendedor_Email'])
-                                    dialog_editar_venta(row, df_inventario, db)
-                            with cc2:
-                                if st.button("🗑️ Eliminar y Devolver", key=f"del_v_{row['ID_Venta']}", type="primary", use_container_width=True):
-                                    exito, msj = db.eliminar_venta(row['ID_Venta'])
-                                    if exito: 
-                                        st.success(msj)
-                                        st.rerun()
-                                    else: 
-                                        st.error(msj)
-                            st.markdown("<br>", unsafe_allow_html=True)
-                    else:
-                        st.warning("No se encontró ninguna Venta coincidente.")
-            else:
-                if not df_abonos_global.empty:
+                
+                # Para evitar lag en mobile si hay 2000 ventas, mostramos máximo las 30 más recientes que coincidan
+                df_filtro = df_filtro.sort_values(by="ID_Venta", ascending=False).head(30)
+                
+                if not df_filtro.empty:
+                    st.markdown(f"*{f'Mostrando {len(df_filtro)} resultados' if termino else 'Mostrando las últimas 30 ventas registradas'}*")
+                    for _, row in df_filtro.iterrows():
+                        st.markdown(f'''
+                        <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #3b82f6; margin-bottom: 10px;">
+                            <div style="font-weight:bold; font-size:16px;">Venta #{row['ID_Venta']} - {row['Cliente']}</div>
+                            <div style="color: #475569; font-size: 14px; margin-bottom: 0px;">{row['Nombre_Vendedor']} vendió <b>{row.get('Cantidad', 1)}x {row['Producto']}</b> por <b>${row['Total_Venta']:,.2f}</b></div>
+                        </div>
+                        ''', unsafe_allow_html=True)
+                        
+                        cc1, cc2 = st.columns(2)
+                        with cc1:
+                            if st.button("✏️ Editar Completo", key=f"edit_v_{row['ID_Venta']}", use_container_width=True):
+                                df_inventario = db.leer_inventario(vendedor_email=row['Vendedor_Email'])
+                                dialog_editar_venta(row, df_inventario, db)
+                        with cc2:
+                            if st.button("🗑️ Eliminar y Devolver", key=f"del_v_{row['ID_Venta']}", type="primary", use_container_width=True):
+                                exito, msj = db.eliminar_venta(row['ID_Venta'])
+                                if exito: 
+                                    st.success(msj)
+                                    st.rerun()
+                                else: 
+                                    st.error(msj)
+                        st.markdown("<br>", unsafe_allow_html=True)
+                else:
+                    st.warning("No se encontró ninguna Venta coincidente.")
+        else:
+            if not df_abonos_global.empty:
+                df_filtro = df_abonos_global
+                
+                if termino:
                     df_filtro = df_abonos_global[
                         df_abonos_global["id_abono"].astype(str).str.lower().str.contains(termino) |
                         df_abonos_global["venta_id"].astype(str).str.lower().str.contains(termino) |
                         df_abonos_global["monto_abono"].astype(str).str.lower().str.contains(termino)
                     ]
-                    
-                    if not df_filtro.empty:
-                        for _, row in df_filtro.iterrows():
-                            st.markdown(f'''
-                            <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 10px;">
-                                <div style="font-weight:bold; font-size:16px;">Abono #{row['id_abono']} (Hacia Venta #{row['venta_id']})</div>
-                                <div style="color: #475569; font-size: 14px; margin-bottom: 0px;">Monto: <b>${row['monto_abono']:,.2f}</b> vía {row['metodo_pago']}</div>
-                            </div>
-                            ''', unsafe_allow_html=True)
-                            
-                            cc1, cc2 = st.columns(2)
-                            with cc1:
-                                if st.button("✏️ Modificar Abono", key=f"edit_a_{row['id_abono']}", use_container_width=True):
-                                    dialog_editar_abono(row, db)
-                            with cc2:
-                                if st.button("🗑️ Eliminar Abono", key=f"del_a_{row['id_abono']}", type="primary", use_container_width=True):
-                                    exito, msj = db.eliminar_abono(row['id_abono'])
-                                    if exito:
-                                        st.success(msj)
-                                        st.rerun()
-                                    else:
-                                        st.error(msj)
-                            st.markdown("<br>", unsafe_allow_html=True)
-                    else:
-                        st.warning("No se encontró ningún Abono coincidente.")
+                
+                # Acotar resultados 
+                df_filtro = df_filtro.sort_values(by="id_abono", ascending=False).head(30)
+                
+                if not df_filtro.empty:
+                    st.markdown(f"*{f'Mostrando {len(df_filtro)} abonos' if termino else 'Mostrando los últimos 30 abonos registrados'}*")
+                    for _, row in df_filtro.iterrows():
+                        venta_id_asociada = row['venta_id']
+                        
+                        # Extraer contexto de la venta a través de df_todas
+                        info_cl = "Cliente Desconocido"
+                        info_prod = "Producto Desconocido"
+                        vendedor = "Vendedor Desconocido"
+                        if not df_todas.empty:
+                            vg = df_todas[df_todas["ID_Venta"] == venta_id_asociada]
+                            if not vg.empty:
+                                info_cl = vg.iloc[0]["Cliente"]
+                                info_prod = vg.iloc[0]["Producto"]
+                                vendedor = vg.iloc[0]["Nombre_Vendedor"]
+                                
+                        st.markdown(f'''
+                        <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 10px;">
+                            <div style="font-weight:bold; font-size:16px;">Abono #{row['id_abono']} <span style="font-size:13px; font-weight:normal; color:#64748b;">(De la Venta #{venta_id_asociada})</span></div>
+                            <div style="color: #475569; font-size: 14px; margin-bottom: 4px;">Depositado por: <b>{info_cl}</b> ({info_prod})</div>
+                            <div style="color: #64748b; font-size: 12px; margin-bottom: 8px;">Cobrador/Gestor: {vendedor}</div>
+                            <div style="color: #047857; font-size: 18px; font-weight:900; margin-bottom: 0px;">+ ${row['monto_abono']:,.2f} <span style="font-size:13px; font-weight:normal; color:#64748b;">({row['metodo_pago']})</span></div>
+                        </div>
+                        ''', unsafe_allow_html=True)
+                        
+                        cc1, cc2 = st.columns(2)
+                        with cc1:
+                            if st.button("✏️ Modificar Abono", key=f"edit_a_{row['id_abono']}", use_container_width=True):
+                                dialog_editar_abono(row, db)
+                        with cc2:
+                            if st.button("🗑️ Eliminar Abono", key=f"del_a_{row['id_abono']}", type="primary", use_container_width=True):
+                                exito, msj = db.eliminar_abono(row['id_abono'])
+                                if exito:
+                                    st.success(msj)
+                                    st.rerun()
+                                else:
+                                    st.error(msj)
+                        st.markdown("<br>", unsafe_allow_html=True)
+                else:
+                    st.warning("No se encontró ningún Abono coincidente.")
