@@ -1,6 +1,48 @@
 import streamlit as st
 import pandas as pd
 
+@st.dialog("Edición Completa de Venta")
+def dialog_editar_venta(venta_info, df_inventario, db):
+    st.markdown("⚠️ **Cambiarás los detalles de esta venta. El inventario se ajustará automáticamente.**")
+    
+    nuevo_cliente = st.text_input("Nombre de Cliente", value=venta_info['Cliente'])
+    nuevo_monto = st.number_input("Precio Cobrado ($)", min_value=0.0, value=float(venta_info['Total_Venta']), step=50.0)
+    
+    # Preparar opciones de productos
+    opciones_prod = df_inventario["nombre"].tolist() if not df_inventario.empty else [venta_info['Producto']]
+    if venta_info['Producto'] not in opciones_prod:
+        opciones_prod.append(venta_info['Producto'])
+        
+    index_prod = opciones_prod.index(venta_info['Producto'])
+    nuevo_producto = st.selectbox("Producto Entregado", options=opciones_prod, index=index_prod)
+    
+    nueva_cantidad = st.number_input("Cantidad de Piezas", min_value=1, value=int(venta_info.get('cantidad', 1)), step=1)
+    
+    if st.button("💾 Guardar Corrección", type="primary", use_container_width=True):
+        exito, msj = db.editar_venta_completa(venta_info['ID_Venta'], nuevo_cliente, nuevo_producto, nueva_cantidad, nuevo_monto)
+        if exito:
+            st.success(msj)
+            st.rerun()
+        else:
+            st.error(msj)
+
+@st.dialog("Edición de Abono")
+def dialog_editar_abono(abono_info, db):
+    st.markdown("Modifica el recibo de este pago.")
+    nuevo_monto = st.number_input("Monto Abonado ($)", min_value=0.0, value=float(abono_info['monto_abono']), step=50.0)
+    metodos = ["Efectivo", "Transferencia", "Tarjeta"]
+    idx_m = metodos.index(abono_info['metodo_pago']) if abono_info['metodo_pago'] in metodos else 0
+    nuevo_metodo = st.selectbox("Método de Pago", options=metodos, index=idx_m)
+    
+    if st.button("💾 Actualizar Recibo", type="primary", use_container_width=True):
+        exito, msj = db.editar_abono(abono_info['id_abono'], nuevo_monto, nuevo_metodo)
+        if exito:
+            st.success(msj)
+            st.rerun()
+        else:
+            st.error(msj)
+
+
 def show():
     # Esta página requerirá rol Admin
     if st.session_state.user_role != "Admin":
@@ -15,8 +57,9 @@ def show():
 
     # 📌 PRE-CARGAR DATOS PESADOS UNA SOLA VEZ PARA OPTIMIZAR VELOCIDAD
     df_todas = db.obtener_tabla_ventas_completa()
+    df_abonos_global = db.leer_abonos()
     
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard de KPIs", "📦 Gestión de Inventario", "💵 Abonos y Pagos", "✉️ Invitar Vendedor"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 KPIs", "📦 Inventario", "💵 Abonos/Pagos", "✉️ Vendedores", "📝 Correcciones"])
 
     with tab1:
         st.subheader("Indicadores Clave de Desempeño")
@@ -271,3 +314,79 @@ def show():
                     else:
                         st.error(f"Error al registrar en la base de datos: {msj_db}")
 
+    with tab5:
+        st.subheader("🕵️ Buscador Inteligente para Correcciones")
+        st.markdown("Busca cualquier registro rápidamente para modificarlo o eliminarlo permanentemente del sistema sin dejar basura ni descuadrar tus inventarios.")
+        tipo_correccion = st.radio("¿Qué tipo de registro deseas corregir?", ["Ventas", "Abonos"], horizontal=True)
+        
+        busqueda = st.text_input("🔍 Escribe para buscar...", placeholder="Por ejemplo: Maria, 45, o nombre de producto", key="buscador_admin")
+        
+        if busqueda:
+            termino = str(busqueda).lower()
+            
+            if tipo_correccion == "Ventas":
+                if not df_todas.empty:
+                    df_filtro = df_todas[
+                        df_todas["Cliente"].astype(str).str.lower().str.contains(termino) |
+                        df_todas["Nombre_Vendedor"].astype(str).str.lower().str.contains(termino) |
+                        df_todas["ID_Venta"].astype(str).str.lower().str.contains(termino) |
+                        df_todas["Producto"].astype(str).str.lower().str.contains(termino)
+                    ]
+                    
+                    if not df_filtro.empty:
+                        for _, row in df_filtro.iterrows():
+                            st.markdown(f'''
+                            <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #3b82f6; margin-bottom: 10px;">
+                                <div style="font-weight:bold; font-size:16px;">Venta #{row['ID_Venta']} - {row['Cliente']}</div>
+                                <div style="color: #475569; font-size: 14px; margin-bottom: 0px;">{row['Nombre_Vendedor']} vendió <b>{row.get('Cantidad', 1)}x {row['Producto']}</b> por <b>${row['Total_Venta']:,.2f}</b></div>
+                            </div>
+                            ''', unsafe_allow_html=True)
+                            
+                            cc1, cc2 = st.columns(2)
+                            with cc1:
+                                if st.button("✏️ Editar Completo", key=f"edit_v_{row['ID_Venta']}", use_container_width=True):
+                                    df_inventario = db.leer_inventario(vendedor_email=row['Vendedor_Email'])
+                                    dialog_editar_venta(row, df_inventario, db)
+                            with cc2:
+                                if st.button("🗑️ Eliminar y Devolver", key=f"del_v_{row['ID_Venta']}", type="primary", use_container_width=True):
+                                    exito, msj = db.eliminar_venta(row['ID_Venta'])
+                                    if exito: 
+                                        st.success(msj)
+                                        st.rerun()
+                                    else: 
+                                        st.error(msj)
+                            st.markdown("<br>", unsafe_allow_html=True)
+                    else:
+                        st.warning("No se encontró ninguna Venta coincidente.")
+            else:
+                if not df_abonos_global.empty:
+                    df_filtro = df_abonos_global[
+                        df_abonos_global["id_abono"].astype(str).str.lower().str.contains(termino) |
+                        df_abonos_global["venta_id"].astype(str).str.lower().str.contains(termino) |
+                        df_abonos_global["monto_abono"].astype(str).str.lower().str.contains(termino)
+                    ]
+                    
+                    if not df_filtro.empty:
+                        for _, row in df_filtro.iterrows():
+                            st.markdown(f'''
+                            <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 10px;">
+                                <div style="font-weight:bold; font-size:16px;">Abono #{row['id_abono']} (Hacia Venta #{row['venta_id']})</div>
+                                <div style="color: #475569; font-size: 14px; margin-bottom: 0px;">Monto: <b>${row['monto_abono']:,.2f}</b> vía {row['metodo_pago']}</div>
+                            </div>
+                            ''', unsafe_allow_html=True)
+                            
+                            cc1, cc2 = st.columns(2)
+                            with cc1:
+                                if st.button("✏️ Modificar Abono", key=f"edit_a_{row['id_abono']}", use_container_width=True):
+                                    dialog_editar_abono(row, db)
+                            with cc2:
+                                if st.button("🗑️ Eliminar Abono", key=f"del_a_{row['id_abono']}", type="primary", use_container_width=True):
+                                    exito, msj = db.eliminar_abono(row['id_abono'])
+                                    if exito:
+                                        st.success(msj)
+                                        st.rerun()
+                                    else:
+                                        st.error(msj)
+                            st.markdown("<br>", unsafe_allow_html=True)
+                    else:
+                        st.warning("No se encontró ningún Abono coincidente.")
