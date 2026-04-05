@@ -104,8 +104,14 @@ def show():
             cantidad = st.number_input("Cantidad a vender", min_value=1, max_value=limite_cantidad, value=1)
             precio = st.number_input("Precio Unitario Final ($)", min_value=0.0, step=10.0, format="%.2f", value=precio_def, key=f"precio_{producto}")
             
-            pagado_check = st.checkbox("¿Cobro total inmediato (Al contado)?")
-            
+            tipo_v = st.session_state.get("user_tipo_vendedor", "Crédito")
+            if tipo_v == "One-Shot":
+                # Forzar cobro total
+                st.info("🎟️ Tu perfil está etiquetado como Vendedor One-Shot. Esta venta se registrará automáticamente como liquidada 100% al contado.")
+                pagado_check = True
+            else:
+                pagado_check = st.checkbox("¿Cobro total inmediato (Al contado)?")
+                            
             # Botón de envio
             submit_venta = st.form_submit_button("Registrar Venta")
             
@@ -353,3 +359,31 @@ def show():
                 st.success("¡Excelente! No tienes ningún cliente con deudas.")
         else:
             st.info("No hay ventas registradas.")
+
+    # --- SECCIÓN: GANANCIAS DE RED (MULTI-NIVEL) ---
+    st.markdown("---")
+    st.subheader("🌐 Mis Ganancias de Red (Liderazgo)")
+    st.markdown("Aquí se reflejan las ganancias generadas automáticamente (5%) por las ventas **cerradas y liquidadas al 100%** de los vendedores que tú patrocinaste.")
+    
+    df_red, bono_total_red = db.leer_metricas_red(st.session_state.user_email)
+    
+    if not df_red.empty:
+        st.markdown(f'''
+        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 20px; border-radius: 12px; color: white; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h3 style="margin: 0; font-size: 18px; font-weight: 500;">Acumulado a Cobrar por Liderazgo</h3>
+            <h1 style="margin: 5px 0 0 0; font-size: 36px; font-weight: 800;">${bono_total_red:,.2f} MXN</h1>
+        </div>
+        ''', unsafe_allow_html=True)
+        
+        st.write("### 📝 Desglose de Ventas de tu Equipo (Ya Liquidadas)")
+        for _, row in df_red.iterrows():
+            st.markdown(f'''
+            <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 10px;">
+                <div style="font-weight:bold; font-size:16px;">Venta a: {row['Cliente']} <span style="float:right; font-size:13px; font-weight:normal; color:#64748b;">🗓️ {row['Fecha']}</span></div>
+                <div style="color: #475569; font-size: 14px; margin-bottom: 4px;">Atendió: <b>{row['Vendedor']}</b> (Monto Final: ${row['Total_Venta']:,.2f})</div>
+                <div style="color: #047857; font-size: 16px; font-weight:bold; margin-bottom: 0px;">Tu Bono (5%): +${row['Bono_Ganado']:,.2f}</div>
+            </div>
+            ''', unsafe_allow_html=True)
+            
+    else:
+        st.info("Actualmente no tienes vendedores patrocinados con ventas cerradas al 100%.")
