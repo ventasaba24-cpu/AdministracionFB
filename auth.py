@@ -43,6 +43,7 @@ def check_password():
             st.session_state.user_role = user.rol
             st.session_state.user_comision = user.tasa_comision
             st.session_state.user_email = user.email
+            st.session_state.user_tipo_vendedor = user.tipo_vendedor
             st.rerun() # Refresh silencioso
         else:
             st.query_params.clear()
@@ -94,6 +95,7 @@ def check_password():
             st.session_state.user_role = user.rol
             st.session_state.user_comision = user.tasa_comision
             st.session_state.user_email = user.email
+            st.session_state.user_tipo_vendedor = user.tipo_vendedor
             
             box_login.empty() # Destruir formulario de la pantalla
             return True 
