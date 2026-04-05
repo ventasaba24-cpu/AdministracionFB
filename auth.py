@@ -19,16 +19,18 @@ def check_password():
         except KeyError:
             pass
             
-        if "session_token" in st.query_params:
-            del st.query_params["session_token"]
+        # Usar limpieza global de URL
+        st.query_params.clear()
             
-        # Destruir estado
+        # Destruir estado global
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         
         st.session_state.logged_in = False
-        st.success("Sesión cerrada. Selecciona la barra de navegación para continuar.")
-        return False
+        st.success("Sesión cerrada exitosamente.")
+        # IMPORTANTE: No usamos return False aquí. Dejaremos que el código siga hacia 
+        # abajo hasta dibujar orgánicamente el Formulario de Login. Si usamos abortos 
+        # forzados como st.stop() aquí mismo, la nube ignora borrar la URL.
 
     # MÉTODO INFALIBLE PARA CELULARES (Evita bloqueo ITP de Safari/iOS)
     # Streamlit guarda estos parámetros en la barra de direcciones que nunca se borra con un F5.
