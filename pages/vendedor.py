@@ -143,29 +143,29 @@ def show():
             df_por_cobrar = df_mis[(df_mis["Estado_Venta"] == "Pagado") & (df_mis["Comision_Fisicamente_Cobrada"] == False)]
             
             if not df_por_cobrar.empty:
-                st.write("Selecciona una venta liquidadada para informarle al sistema que ya recibiste tu comisión monetaria.")
+                st.write("Ventas liquidadas listas para cobrar tu comisión:")
                 
-                # Crear diccionario para opciones descriptivas legibles
-                opciones = {}
                 for idx, row in df_por_cobrar.iterrows():
-                    desc = f"Venta #{row['ID_Venta']} | {row['Producto']} | Cliente: {row['Cliente']} | Comisión: ${row['Comision_Generada']:,.2f}"
-                    opciones[row['ID_Venta']] = desc
+                    st.markdown(f"""
+                    <div style="border-left: 6px solid #3b82f6; background-color: rgba(59, 130, 246, 0.08); padding: 12px; border-radius: 6px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <div style="font-size: 16px; font-weight: bold; margin-bottom: 6px; color: #1f2937;">👤 Cliente: {row['Cliente']}</div>
+                        <div style="font-size: 14px; margin-bottom: 4px; color: #374151;">📦 <b>Perfume:</b> {row['Producto']}</div>
+                        <div style="font-size: 14px; margin-bottom: 4px; color: #374151;">💵 <b>Costo Venta Total:</b> ${row['Total_Venta']:,.2f}</div>
+                        <div style="font-size: 15px; color: #2563eb; font-weight: bold; margin-top: 6px;">💰 <b>Tu Comisión:</b> ${row['Comision_Generada']:,.2f}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
                     
-                with st.form("form_cobrar_comision"):
-                    venta_seleccionada = st.selectbox(
-                        "Comisiones disponibles", 
-                        options=list(opciones.keys()),
-                        format_func=lambda x: opciones[x]
-                    )
-                    btn_cobrar = st.form_submit_button("Confirmar recepción de esta comisión")
-                    
-                    if btn_cobrar:
-                        exito_cobro, msj_cobro = db.marcar_comision_cobrada(venta_seleccionada)
-                        if exito_cobro:
-                            st.success(msj_cobro)
-                            st.rerun()
-                        else:
-                            st.error(msj_cobro)
+                    # Usamos un expander para esconder y mostrar la confirmación (hace el efecto de un botón que pide confirmación)
+                    with st.expander(f"📥 Retirar Comisión de {row['Cliente']}"):
+                        st.warning(f"¿Estás seguro de registrar y marcar como retirados estos **${row['Comision_Generada']:,.2f}**?")
+                        if st.button("✅ Sí, Confirmar Retiro", key=f"btn_cobrar_{row['ID_Venta']}", use_container_width=True):
+                            exito_cobro, msj_cobro = db.marcar_comision_cobrada(row['ID_Venta'])
+                            if exito_cobro:
+                                st.success("Comisión retirada exitosamente.")
+                                st.rerun()
+                            else:
+                                st.error(msj_cobro)
+                    st.markdown("<br>", unsafe_allow_html=True)
             else:
                 st.info("No tienes comisiones liberadas pendientes de retirar.")
         else:
