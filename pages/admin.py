@@ -278,7 +278,19 @@ def show():
         with st.form("invitar_vendedor_form"):
             nuevo_nombre = st.text_input("Nombre completo del vendedor")
             nuevo_correo = st.text_input("Correo Electrónico (Gmail)")
-            nueva_comision = st.number_input("Tasa de Comisión (%)", min_value=0.0, max_value=100.0, value=5.0, step=0.5)
+            nueva_comision = st.number_input("Tasa de Comisión (%)", min_value=0.0, max_value=100.0, value=10.0, step=0.5)
+            
+            tipo_vendedor_val = st.radio("Modalidad de Ventas Permitida", ["Crédito", "One-Shot"], 
+                                         help="Crédito permite a este vendedor dejar ventas con abonos pendientes. One-Shot forzará a que el vendedor solo pueda registrar ventas 100% liquidadas.", horizontal=True)
+            
+            st.divider()
+            
+            vendedores_actuales = db.obtener_vendedores()
+            opciones_patrocinador = ["Ninguno (Empresa)"] + [st.session_state.user_email] + vendedores_actuales["email"].tolist()
+            # Eliminar duplicados manteniendo orden
+            opciones_patrocinador = list(dict.fromkeys(opciones_patrocinador))
+            
+            patrocinador_val = st.selectbox("Patrocinador (Líder de Red que ganará 5% de esta persona)", opciones_patrocinador, index=opciones_patrocinador.index(st.session_state.user_email) if st.session_state.user_email in opciones_patrocinador else 0)
 
             btn_invitar = st.form_submit_button("Generar Credencial y Enviar Invitación")
 
@@ -292,12 +304,15 @@ def show():
                     import string
                     from email_service import enviar_invitacion_gmail
                     
+                    # Limpiar patrocinador
+                    final_patrocinador = None if patrocinador_val == "Ninguno (Empresa)" else patrocinador_val
+
                     # Generar contraseña temporal segura
                     caracteres = string.ascii_letters + string.digits
                     password_temp = "".join(random.choice(caracteres) for i in range(8))
                     
                     # Guardar en SQLite el nuevo usuario
-                    exito_db, msj_db = db.registrar_vendedor(nuevo_nombre, nuevo_correo, password_temp, nueva_comision)
+                    exito_db, msj_db = db.registrar_vendedor(nuevo_nombre, nuevo_correo, password_temp, nueva_comision, final_patrocinador, tipo_vendedor_val)
                     
                     if exito_db:
                         st.info("Generando credenciales y conectando con el servicio de correo...")
