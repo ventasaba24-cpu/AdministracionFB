@@ -11,6 +11,15 @@ def check_password():
     """Returns `True` if the user is authenticated."""
     cookie_manager = get_manager()
 
+    # 🌟 CORE FIX: Prevenir que la app nos deslogueé "parpadeando" muy rápido
+    # Streamlit reinicia st.session_state al refrescar. El CookieManager tarda ~0.3s en leer el teléfono celular.
+    # Le damos tiempo al navegador para enviar la sesión antes de asumir que el usuario no tiene acceso.
+    if "espera_de_cookies_lista" not in st.session_state:
+        st.session_state.espera_de_cookies_lista = True
+        import time
+        time.sleep(0.4)
+        st.rerun()
+
     # Procesar la orden de cerrar sesión de la corrida anterior
     if st.session_state.get("wants_logout", False):
         try:
