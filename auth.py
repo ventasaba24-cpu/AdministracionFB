@@ -4,7 +4,7 @@ import extra_streamlit_components as stx
 import datetime
 
 # Inicializar un único Cookie Manager por ejecución
-@st.cache_resource(key="auth_manager_cache")
+@st.cache_resource
 def get_manager():
     return stx.CookieManager(key="auth_cookie_manager")
 
