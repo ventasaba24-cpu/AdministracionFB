@@ -99,7 +99,7 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
         engine = create_engine(db_path, pool_pre_ping=True, pool_size=5, max_overflow=10)
         
     Base.metadata.create_all(engine)
-    SessionMaker = sessionmaker(bind=engine)
+    SessionMaker = sessionmaker(bind=engine, expire_on_commit=False)
     return engine, SessionMaker
 
 class DatabaseHandler:
