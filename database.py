@@ -690,14 +690,14 @@ class DatabaseHandler:
             bono_total = 0.0
             for v, u in query.all():
                 # El 5% se calcula del TOTAL de la venta completada
-                mi_5_porciento = float(v.total_venta) * 0.05
+                mi_5_porciento = float(v.monto_total) * 0.05
                 bono_total += mi_5_porciento
                 
                 data.append({
                     "Vendedor": u.nombre,
-                    "ID_Venta": v.id_venta,
+                    "ID_Venta": v.id,
                     "Cliente": v.cliente,
-                    "Total_Venta": v.total_venta,
+                    "Total_Venta": v.monto_total,
                     "Bono_Ganado": mi_5_porciento,
                     "Fecha": v.fecha_venta.strftime("%Y-%m-%d") if v.fecha_venta else ""
                 })
