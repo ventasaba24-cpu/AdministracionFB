@@ -29,6 +29,7 @@ class Producto(Base):
     stock = Column(Integer, default=0)
     precio = Column(Float, nullable=False)
     costo_compra = Column(Float, default=0.0) # Costo de inversión que solo ve el admin
+    proveedor = Column(String(150), nullable=True) # Distribuidor/Proveedor que solo ve admin
     
     __table_args__ = (UniqueConstraint('nombre', 'vendedor_email', name='_nombre_vendedor_uc'),)
 
@@ -154,9 +155,10 @@ class DatabaseHandler:
         """Sobreescribe el inventario de un vendedor específico basado en el DataFrame del UI."""
         session = self.get_session()
         try:
-            # Respaldar los costos de compra actuales (para no sobreescribirlos con $0 si es un vendedor quien guarda)
+            # Respaldar los costos de compra y proveedores actuales (para no sobreescribirlos si es un vendedor quien guarda)
             old_products = session.query(Producto).filter_by(vendedor_email=vendedor_email).all()
             costos_map = {p.nombre: p.costo_compra for p in old_products}
+            provs_map = {p.nombre: p.proveedor for p in old_products}
             
             # Borramos el previo stock de este vendedor
             session.query(Producto).filter_by(vendedor_email=vendedor_email).delete(synchronize_session=False)
@@ -172,12 +174,17 @@ class DatabaseHandler:
                 if pd.isna(costo_nuevo) or costo_nuevo is None:
                     costo_nuevo = costos_map.get(nombre, 0.0)
                     
+                prov_nuevo = row.get('proveedor')
+                if pd.isna(prov_nuevo) or prov_nuevo is None:
+                    prov_nuevo = provs_map.get(nombre, "Desconocido")
+                    
                 nuevo_prod = Producto(
                     nombre=nombre,
                     vendedor_email=vendedor_email,
                     stock=int(row.get('stock', 0)),
                     precio=float(row.get('precio', 0.0)),
-                    costo_compra=float(costo_nuevo)
+                    costo_compra=float(costo_nuevo),
+                    proveedor=str(prov_nuevo)
                 )
                 session.add(nuevo_prod)
             session.commit()
@@ -289,6 +296,10 @@ class DatabaseHandler:
              usuarios = session.query(Usuario).all()
              user_dict = {u.email: u for u in usuarios}
              
+             # Diccionario rápido de productos para sacar su proveedor
+             productos = session.query(Producto).all()
+             prod_dict = {(p.nombre, p.vendedor_email): p for p in productos}
+             
              datos_procesados = []
              
              for v in ventas:
@@ -321,6 +332,9 @@ class DatabaseHandler:
                  tasa = vendedor.tasa_comision if vendedor else 0.10
                  nombre_vendedor = vendedor.nombre if vendedor else "Desconocido"
                  
+                 prod = prod_dict.get((v.producto_nombre, v.vendedor_email))
+                 nombre_proveedor = prod.proveedor if prod and prod.proveedor else "Desconocido"
+                 
                  # Si está pagado
                  comision_ganada = v.monto_total * tasa
                  comision_pagada = "SI" if estado == "Pagado" else "NO"
@@ -337,6 +351,7 @@ class DatabaseHandler:
                      "Nombre_Vendedor": nombre_vendedor,
                      "Cliente": v.cliente,
                      "Producto": v.producto_nombre,
+                     "Proveedor": nombre_proveedor,
                      "Total_Venta": v.monto_total,
                      "IVA_(16%)": iva_generado,
                      "Costo_Producto": costo_bases,
