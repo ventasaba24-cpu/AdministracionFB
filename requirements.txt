@@ -5,3 +5,4 @@ SQLAlchemy
 psycopg2-binary
 # Manejador de cookies de usuario
 extra-streamlit-components
+Werkzeug
