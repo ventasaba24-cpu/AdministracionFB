@@ -2,6 +2,32 @@ import streamlit as st
 import pandas as pd
 import datetime
 
+# Habilitar diálogos de Streamlit (Pop-up)
+if hasattr(st, "dialog"):
+    dialog_decorator = st.dialog
+elif hasattr(st, "experimental_dialog"):
+    dialog_decorator = st.experimental_dialog
+else:
+    # Fallback por si la version de Streamlit es muy vieja, aunque no debería
+    def dialog_decorator(title):
+        def decorator(func):
+            return func
+        return decorator
+
+@dialog_decorator("ℹ️ Detalles Completos del Cliente")
+def mostrar_detalles_popup(row):
+    st.markdown(f"**Usuario / Cliente:** {row['Cliente']}")
+    st.markdown(f"**Fecha de Compra:** {row['Fecha_Venta']}")
+    st.markdown(f"**Producto Adquirido:** {row['Producto']}")
+    st.markdown("---")
+    # Nota: Mostramos Total_Venta en lugar de Costo_Producto para proteger la visibilidad del costo (COGS) según reglas del admin.
+    st.markdown(f"**Precio Real de Venta (Lo que costó al cliente):** :green[${float(row['Total_Venta']):,.2f}]")
+    st.markdown(f"**Abonos Totales (Lo pagado):** :blue[${float(row['Total_Abono']):,.2f}]")
+    st.markdown(f"**Adeudo Actual Pendiente:** :red[${float(row['Saldo_Pendiente']):,.2f}]")
+    
+    if st.button("Cerrar Pop-up", use_container_width=True):
+        st.rerun()
+
 # Función principal a llamar desde app.py
 def show():
     st.title("👨💼 Panel de Vendedor")
@@ -161,25 +187,44 @@ def show():
         st.subheader("⚠️ Clientes con Adeudo")
         
         if not df_todas.empty:
-            df_adeudos = df_mis_ventas[df_mis_ventas["Estado_Venta"] == "Adeudo"][["Cliente", "Producto", "Saldo_Pendiente", "Dias_Ultimo_Abono", "Total_Abono"]].copy()
+            # Traemos más columnas para el popup (Fecha_Venta, Total_Venta, ID_Venta)
+            df_adeudos = df_mis_ventas[df_mis_ventas["Estado_Venta"] == "Adeudo"][["ID_Venta", "Fecha_Venta", "Cliente", "Producto", "Total_Venta", "Saldo_Pendiente", "Dias_Ultimo_Abono", "Total_Abono"]].copy()
             
             if not df_adeudos.empty:
                 df_adeudos = df_adeudos.sort_values(by="Dias_Ultimo_Abono", ascending=False)
                 
-                def highlight_deudas(row):
+                # Mostrar como "Tarjetas" (Cards) HTML para una vista perfecta en celulares
+                for _, row in df_adeudos.iterrows():
                     dias = row["Dias_Ultimo_Abono"]
                     try:
                         dias = int(dias)
-                        if dias > 30:
-                            return ['background-color: rgba(255, 75, 75, 0.3)'] * len(row) # Rojo
-                        elif dias >= 20: 
-                            return ['background-color: rgba(255, 204, 0, 0.3)'] * len(row) # Amarillo
-                        else:
-                            return ['background-color: rgba(75, 255, 75, 0.3)'] * len(row) # Verde
                     except:
-                        return [''] * len(row)
-                
-                st.dataframe(df_adeudos.style.apply(highlight_deudas, axis=1).format({"Saldo_Pendiente": "${:,.2f}", "Total_Abono": "${:,.2f}"}), width="stretch", hide_index=True)
+                        dias = 0
+                        
+                    if dias > 30:
+                        borde = "#ff4b4b" # Rojo
+                        fondo = "rgba(255, 75, 75, 0.1)"
+                    elif dias >= 20: 
+                        borde = "#ffcc00" # Amarillo
+                        fondo = "rgba(255, 204, 0, 0.15)"
+                    else:
+                        borde = "#28a745" # Verde
+                        fondo = "rgba(40, 167, 69, 0.1)"
+                        
+                    saldo = f"${float(row['Saldo_Pendiente']):,.2f}"
+                    
+                    # Dibujar Tarjeta
+                    st.markdown(f"""
+                    <div style="border-left: 6px solid {borde}; background-color: {fondo}; padding: 12px; border-radius: 6px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <div style="font-size: 16px; font-weight: bold; margin-bottom: 6px; color: #1f2937;">👤 {row['Cliente']}</div>
+                        <div style="font-size: 14px; margin-bottom: 4px; color: #374151;">📦 <b>Producto:</b> {row['Producto']}</div>
+                        <div style="font-size: 14px; margin-bottom: 4px; color: #374151;">💵 <b>Saldo Pendiente:</b> <span style="color: {borde if borde != '#ffcc00' else '#d97706'}; font-weight: bold;">{saldo}</span></div>
+                        <div style="font-size: 14px; color: #374151;">⏳ <b>Sin abonos hace:</b> {dias} días</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if st.button(f"🔍 Ver detalles de {row['Cliente']}", key=f"btn_det_{row['ID_Venta']}"):
+                        mostrar_detalles_popup(row)
             else:
                 st.success("¡Excelente! No tienes ningún cliente con deudas.")
         else:
