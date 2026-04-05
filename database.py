@@ -3,7 +3,7 @@ import pandas as pd
 import datetime
 import streamlit as st
 from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey, text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.sql import func
 
@@ -60,6 +60,7 @@ class Venta(Base):
     costo_historico = Column(Float, default=0.0) 
     
     comision_cobrada = Column(Boolean, default=False) # Bandera que indica si el vendedor ya cobro los billetes físicos
+    fecha_cobro_comision = Column(DateTime, nullable=True) # Momento exacto del retiro de la comisión
     
     # Relaciones
     abonos = relationship("Abono", back_populates="venta", cascade="all, delete-orphan")
@@ -93,8 +94,16 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
         
     print(f"🔌 Inicializando pool de conexiones: {'[NUBE PostgreSQL]' if 'postgresql' in db_path else '[LOCAL SQLite]'}")
     
+    # Migración silenciosa de SQLite para no molestar al usuario con comandos manuales
     if "sqlite" in db_path:
         engine = create_engine(db_path, connect_args={"check_same_thread": False})
+        try:
+             with engine.connect() as conn:
+                 conn.execute(text("ALTER TABLE ventas ADD COLUMN fecha_cobro_comision DATETIME"))
+                 conn.execute(text("UPDATE ventas SET fecha_cobro_comision = fecha_venta WHERE comision_cobrada = 1 AND fecha_cobro_comision IS NULL"))
+                 conn.commit()
+        except:
+             pass # Ya existe o es una database PostgreSQL en la nube
     else:
         engine = create_engine(db_path, pool_pre_ping=True, pool_size=5, max_overflow=10)
         
@@ -282,6 +291,7 @@ class DatabaseHandler:
              venta = session.query(Venta).filter_by(id=venta_id).first()
              if venta:
                  venta.comision_cobrada = True
+                 venta.fecha_cobro_comision = datetime.datetime.utcnow()
                  session.commit()
                  return True, "Se ha registrado el cobro de esta comisión."
              return False, "Venta no encontrada."
@@ -370,7 +380,8 @@ class DatabaseHandler:
                      "Comision_Generada": comision_ganada,
                      "Utilidad_Neta": utilidad_neta,
                      "Comision_Pagada": comision_pagada, # Concepto teórico de si ya superó el Adeudo
-                     "Comision_Fisicamente_Cobrada": v.comision_cobrada
+                     "Comision_Fisicamente_Cobrada": v.comision_cobrada,
+                     "Fecha_Cobro_Comision": v.fecha_cobro_comision.strftime("%d-%b-%Y") if hasattr(v, "fecha_cobro_comision") and v.fecha_cobro_comision else ""
                  }
                  datos_procesados.append(fila)
                  
