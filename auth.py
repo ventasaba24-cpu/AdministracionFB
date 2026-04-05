@@ -17,18 +17,24 @@ def check_password():
             cookie_manager.delete("session_token")
         except KeyError:
             pass
-        # Destruir todas las variables excepto cookie_manager (para que no colapse)
+        # Destruir estado
         for key in list(st.session_state.keys()):
             del st.session_state[key]
+        
         st.session_state.logged_in = False
-        # No usamos st.rerun, dejamos que la página termine de cargar la pantalla de login natural
-        # Así el navegador SÍ procesa la orden de borrado de cookie antes de que el usuario haga otra cosa.
-        st.success("Sesión cerrada correctamente.")
+        st.success("Sesión cerrada. Selecciona la barra de navegación para continuar.")
+        return False
 
-    # Get cookie token if exists
-    user_token = cookie_manager.get(cookie="session_token")
+    # Get cookie token if exists (Priorizando el método nativo súper rápido de Streamlit 1.35+)
+    user_token = None
+    if hasattr(st, "context") and hasattr(st.context, "cookies"):
+        user_token = st.context.cookies.get("session_token")
+        
+    if not user_token:
+        # Fallback al cookie manager asíncrono si es versión antigua
+        user_token = cookie_manager.get(cookie="session_token")
 
-    # If the user has a token but is not logged in yet (this happens on the second tick after a refresh)
+    # If the user has a token but is not logged in yet (this happens on refresh)
     if user_token and not st.session_state.get("logged_in", False):
         from database import DatabaseHandler
         db = DatabaseHandler()
@@ -40,9 +46,8 @@ def check_password():
             st.session_state.user_role = user.rol
             st.session_state.user_comision = user.tasa_comision
             st.session_state.user_email = user.email
-            st.rerun() # Refresh to update UI cleanly now that we are logged in
+            st.rerun() # Refresh to clear login screen
         else:
-            # Token is invalid, remove it
             try:
                 cookie_manager.delete("session_token")
             except:
@@ -64,7 +69,7 @@ def check_password():
     st.markdown("Por favor, ingresa tus credenciales.")
     
     with st.form("login_form"):
-        username = st.text_input("Correo Electrónico (Gmail)")
+        username = st.text_input("Correo Electrónico")
         password = st.text_input("Contraseña", type="password")
         submit_button = st.form_submit_button("Entrar")
 
@@ -76,8 +81,8 @@ def check_password():
         is_valid, user = db.login(username, password)
         
         if is_valid:
-            # Set cookie for 7 days
-            expire_date = datetime.datetime.now() + datetime.timedelta(days=7)
+            # Set cookie for 10 days! (Garantiza sesión de más de una semana)
+            expire_date = datetime.datetime.now() + datetime.timedelta(days=10)
             cookie_manager.set("session_token", user.email, expires_at=expire_date)
             
             st.session_state.logged_in = True
@@ -93,6 +98,6 @@ def check_password():
     return False
 
 def logout():
-    # En lugar de destruir el estado agresivamente aquí, levantamos bandera
+    # Levantamos bandera
     st.session_state.wants_logout = True
     st.rerun()
