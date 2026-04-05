@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import datetime
 import streamlit as st
+from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.sql import func
@@ -15,9 +16,17 @@ class Usuario(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     nombre = Column(String(100), nullable=False)
     email = Column(String(100), unique=True, nullable=False)
-    password = Column(String(200), nullable=False)
+    password = Column(String(255), nullable=False) # Extendido a 255 para soportar Hashes
     rol = Column(String(50), default='Vendedor') # 'Admin' o 'Vendedor'
     tasa_comision = Column(Float, default=0.10) # 10% por defecto basado en los datos brindados
+
+class IntentoSeguridad(Base):
+    __tablename__ = 'intentos_seguridad'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    identificador = Column(String(100), nullable=False, unique=True) # IP o Email atacado
+    fallos = Column(Integer, default=0)
+    bloqueado_hasta = Column(DateTime, nullable=True)
+    ultimo_intento = Column(DateTime, default=datetime.datetime.utcnow)
 
 from sqlalchemy import UniqueConstraint
 
@@ -111,7 +120,7 @@ class DatabaseHandler:
                 admin_user = Usuario(
                     nombre="Administrador Principal",
                     email="admin@empresa.com",
-                    password="admin",
+                    password=generate_password_hash("admin"),
                     rol="Admin",
                     tasa_comision=0.0
                 )
@@ -124,7 +133,7 @@ class DatabaseHandler:
                 vendedor_user = Usuario(
                     nombre="Vendedor de Demo",
                     email="vendedor@demo.com",
-                    password="123",
+                    password=generate_password_hash("123"),
                     rol="Vendedor",
                     tasa_comision=0.10
                 )
@@ -380,15 +389,88 @@ class DatabaseHandler:
             session.close()
 
     # ==========================
-    #   USUARIOS Y AUTENTICACIÓN
+    #   USUARIOS Y AUTENTICACIÓN LOGIC PÚBLICA
     # ==========================
-    def login(self, email, password):
+    
+    def verificar_y_registrar_intento(self, session, identificador):
+        """Verifica si un identificador (IP o Email) está bloqueado por demasiados intentos. Si no, lo deja pasar (True), si sí, devuelve (False)"""
+        registro = session.query(IntentoSeguridad).filter_by(identificador=identificador).first()
+        if not registro:
+            return True, None # No hay registro, puede intentar
+            
+        if registro.bloqueado_hasta and registro.bloqueado_hasta > datetime.datetime.utcnow():
+            return False, registro.bloqueado_hasta # Está bloqueado
+            
+        return True, None
+
+    def registrar_fallo(self, session, identificador):
+        """Suma un fallo a este identificador. Bloquea si llega a 3."""
+        registro = session.query(IntentoSeguridad).filter_by(identificador=identificador).first()
+        if not registro:
+            registro = IntentoSeguridad(identificador=identificador, fallos=1)
+            session.add(registro)
+        else:
+            # Si ya pasó su tiempo de bloqueo antiguo, resetear fallos
+            if registro.bloqueado_hasta and registro.bloqueado_hasta <= datetime.datetime.utcnow():
+                 registro.fallos = 1
+                 registro.bloqueado_hasta = None
+            else:
+                 registro.fallos += 1
+            
+            if registro.fallos >= 3:
+                # Bloquear por 15 minutos en UTC
+                registro.bloqueado_hasta = datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
+        
+        registro.ultimo_intento = datetime.datetime.utcnow()
+        session.commit()
+
+    def limpiar_fallos(self, session, identificador):
+        """Limpia el historial de fallos cuando el usuario acierta la contraseña."""
+        registro = session.query(IntentoSeguridad).filter_by(identificador=identificador).first()
+        if registro:
+             registro.fallos = 0
+             registro.bloqueado_hasta = None
+             session.commit()
+
+    def login_seguro(self, email, password, ip_address):
         session = self.get_session()
         try:
-             usr = session.query(Usuario).filter_by(email=email, password=password).first()
-             if usr:
-                 return True, usr
-             return False, None
+             # Generar un identificador de seguridad híbrido (Por IP si existe, sino por EMAIL como fallback)
+             # Preferimos IP real_ip para bloquear atacantes masivos, o el correo atacado directamente
+             id_seguridad = ip_address if ip_address else email
+             
+             permitido, tiempo_bloqueo = self.verificar_y_registrar_intento(session, id_seguridad)
+             if not permitido:
+                 # Restar minutos locales
+                 resta = tiempo_bloqueo - datetime.datetime.utcnow()
+                 minutos_restantes = max(1, int(resta.total_seconds() / 60))
+                 return False, None, f"Por seguridad tecnológica, este acceso ha sido temporalmente suspendido. Intente de nuevo en {minutos_restantes} minutos."
+             
+             # Buscar existencial
+             usr = session.query(Usuario).filter_by(email=email).first()
+             
+             # Fallo intencional temprano si no existe el correo
+             if not usr:
+                 self.registrar_fallo(session, id_seguridad)
+                 return False, None, "Credenciales inválidas."
+                 
+             # Validar el hash
+             if not check_password_hash(usr.password, password):
+                 # Chequeo legacy temporal por si hay contraseñas en texto plano de BD viejas (opcional pero ayuda en transición)
+                 if usr.password == password:
+                     # Migración silenciosa
+                     usr.password = generate_password_hash(password)
+                     session.commit()
+                 else:
+                     self.registrar_fallo(session, id_seguridad)
+                     return False, None, "Credenciales inválidas."
+             
+             # Si llegó aquí, todo está bien
+             self.limpiar_fallos(session, id_seguridad)
+             return True, usr, "OK"
+        except Exception as e:
+             session.rollback()
+             return False, None, "Error interno de validación"
         finally:
              session.close()
 
@@ -415,13 +497,13 @@ class DatabaseHandler:
             nuevo = Usuario(
                 nombre=nombre,
                 email=email,
-                password=password,
+                password=generate_password_hash(password),
                 rol="Vendedor",
                 tasa_comision=comision/100.0 # Guardar directo como tasa decimal (10% -> 0.10)
             )
             session.add(nuevo)
             session.commit()
-            return True, "Registrado en SQLite."
+            return True, "Registrado en Base de Datos."
         except Exception as e:
             session.rollback()
             return False, str(e)
