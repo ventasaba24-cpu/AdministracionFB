@@ -200,13 +200,23 @@ def show():
         else:
             df_mis_ventas = pd.DataFrame()
             
-        col_g1, col_g2 = st.columns(2)
-        with col_g1:
-            st.metric("🟢 Comisiones Listas para Retirar", f"${comisiones_listas_global:,.2f} MXN")
-        with col_g2:
-            st.metric("🔵 Comisiones pendientes (Retirables al finalizar venta)", f"${comisiones_pendientes_global:,.2f} MXN")
-            
-        st.metric("🏆 Ventas Históricas Totales", f"${ventas_totales_global:,.2f} MXN")
+        # Usamos tarjetas HTML personalizadas para evitar los recortes nativos (...) de Streamlit
+        st.markdown(f"""
+        <div style="border-left: 5px solid #10b981; background-color: rgba(16, 185, 129, 0.08); padding: 15px; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+            <div style="color: #047857; font-weight: bold; font-size: 15px; margin-bottom: 5px; line-height: 1.3;">🟢 Comisiones Listas para Retirar</div>
+            <div style="color: #1f2937; font-size: 28px; font-weight: 900;">${comisiones_listas_global:,.2f} <span style="font-size:16px; color:#6b7280; font-weight:600;">MXN</span></div>
+        </div>
+        
+        <div style="border-left: 5px solid #3b82f6; background-color: rgba(59, 130, 246, 0.08); padding: 15px; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+            <div style="color: #1d4ed8; font-weight: bold; font-size: 15px; margin-bottom: 5px; line-height: 1.3;">🔵 Comisiones pendientes por retirar hasta que se finalice la venta</div>
+            <div style="color: #1f2937; font-size: 28px; font-weight: 900;">${comisiones_pendientes_global:,.2f} <span style="font-size:16px; color:#6b7280; font-weight:600;">MXN</span></div>
+        </div>
+        
+        <div style="border-left: 5px solid #f59e0b; background-color: rgba(245, 158, 11, 0.08); padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+            <div style="color: #b45309; font-weight: bold; font-size: 15px; margin-bottom: 5px; line-height: 1.3;">🏆 Ventas Históricas Totales</div>
+            <div style="color: #1f2937; font-size: 28px; font-weight: 900;">${ventas_totales_global:,.2f} <span style="font-size:16px; color:#6b7280; font-weight:600;">MXN</span></div>
+        </div>
+        """, unsafe_allow_html=True)
         
         st.markdown("---")
         st.markdown("##### 📅 Rendimiento por Mes")
@@ -272,16 +282,29 @@ def show():
                         abonos_mes = df_abonos_mios[(df_abonos_mios["fecha_dt"].dt.year == año_m) & (df_abonos_mios["fecha_dt"].dt.month == mes_m)]
                         abonos_mes_val = abonos_mes["monto_abono"].sum()
                         
-                # Dibujar UI de metricas del mes seleccionado
+                # Dibujar UI de métricas del mes seleccionado usando Grid CSS para encajar perfecto en móvil
                 st.markdown(f"**Resumen de {meses_nombres[mes_m-1]} {año_m}**")
                 
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.metric("🛒 Ventas del Mes", f"${ventas_mes_val:,.2f} MXN")
-                    st.metric("💸 Abonos Recibidos", f"${abonos_mes_val:,.2f} MXN")
-                with c2:
-                    st.metric("📦 Ventas Pagadas al 100%", f"${ventas_cerradas_val:,.2f} MXN")
-                    st.metric("💰 Comisiones Retiradas", f"${comisiones_recibidas_val:,.2f} MXN")
+                st.markdown(f"""
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 15px;">
+                    <div style="background-color: #f3f4f6; padding: 12px; border-radius: 8px; border-bottom: 3px solid #9ca3af;">
+                        <div style="font-size: 13px; color: #4b5563; font-weight: 700; margin-bottom: 4px; line-height: 1.2;">🛒 Ventas Totales</div>
+                        <div style="font-size: 21px; font-weight: 900; color: #111827;">${ventas_mes_val:,.2f}</div>
+                    </div>
+                    <div style="background-color: #f3f4f6; padding: 12px; border-radius: 8px; border-bottom: 3px solid #3b82f6;">
+                        <div style="font-size: 13px; color: #4b5563; font-weight: 700; margin-bottom: 4px; line-height: 1.2;">💸 Abonos Recibidos</div>
+                        <div style="font-size: 21px; font-weight: 900; color: #1d4ed8;">${abonos_mes_val:,.2f}</div>
+                    </div>
+                    <div style="background-color: #f3f4f6; padding: 12px; border-radius: 8px; border-bottom: 3px solid #10b981;">
+                        <div style="font-size: 13px; color: #4b5563; font-weight: 700; margin-bottom: 4px; line-height: 1.2;">📦 Ventas 100% Pagadas</div>
+                        <div style="font-size: 21px; font-weight: 900; color: #047857;">${ventas_cerradas_val:,.2f}</div>
+                    </div>
+                    <div style="background-color: #f3f4f6; padding: 12px; border-radius: 8px; border-bottom: 3px solid #f59e0b;">
+                        <div style="font-size: 13px; color: #4b5563; font-weight: 700; margin-bottom: 4px; line-height: 1.2;">💰 Comisiones Retiradas</div>
+                        <div style="font-size: 21px; font-weight: 900; color: #b45309;">${comisiones_recibidas_val:,.2f}</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
                     
         st.markdown("---")
         
