@@ -119,6 +119,13 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
                  conn.commit()
         except:
              pass
+             
+        try:
+             with engine.connect() as conn:
+                 conn.execute(text("UPDATE usuarios SET patrocinador_email = (SELECT email FROM usuarios WHERE rol = 'Admin' ORDER BY id ASC LIMIT 1) WHERE patrocinador_email IS NULL AND rol != 'Admin'"))
+                 conn.commit()
+        except:
+             pass
     else:
         # Entorno PostgreSQL (Nube Supabase)
         engine = create_engine(db_path, pool_pre_ping=True, pool_size=5, max_overflow=10)
@@ -139,6 +146,13 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
         try:
              with engine.connect() as conn:
                  conn.execute(text("ALTER TABLE usuarios ADD COLUMN tipo_vendedor VARCHAR(50) DEFAULT 'Crédito'"))
+                 conn.commit()
+        except:
+             pass
+             
+        try:
+             with engine.connect() as conn:
+                 conn.execute(text("UPDATE usuarios SET patrocinador_email = (SELECT email FROM usuarios WHERE rol = 'Admin' ORDER BY id ASC LIMIT 1) WHERE patrocinador_email IS NULL AND rol != 'Admin'"))
                  conn.commit()
         except:
              pass
