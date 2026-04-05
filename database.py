@@ -376,8 +376,10 @@ class DatabaseHandler:
                      "Fecha_Venta": v.fecha_venta.strftime("%d-%b-%Y") if v.fecha_venta else "",
                      "Dias_Ultimo_Abono": dias_ultimo,
                      "Nombre_Vendedor": nombre_vendedor,
+                     "Vendedor_Email": v.vendedor_email,
                      "Cliente": v.cliente,
                      "Producto": v.producto_nombre,
+                     "Cantidad": getattr(v, "cantidad", 1),
                      "Proveedor": nombre_proveedor,
                      "Total_Venta": v.monto_total,
                      "IVA_(16%)": iva_generado,
@@ -395,6 +397,99 @@ class DatabaseHandler:
                  
              return pd.DataFrame(datos_procesados)
 
+        finally:
+            session.close()
+
+    def eliminar_venta(self, venta_id):
+        session = self.get_session()
+        try:
+            venta = session.query(Venta).filter_by(id=venta_id).first()
+            if not venta:
+                return False, "Venta no encontrada."
+            
+            # Devolver stock
+            mi_producto = session.query(Producto).filter_by(nombre=venta.producto_nombre, vendedor_email=venta.vendedor_email).first()
+            if mi_producto:
+                mi_producto.stock += venta.cantidad
+                
+            session.delete(venta) # Cascada eliminará Abonos adjuntos
+            session.commit()
+            return True, "Venta eliminada exitosamente y stock devuelto."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error al eliminar venta: {e}"
+        finally:
+            session.close()
+
+    def editar_venta_completa(self, venta_id, nuevo_cliente, nuevo_producto, nueva_cantidad, nuevo_monto):
+        session = self.get_session()
+        try:
+            venta = session.query(Venta).filter_by(id=venta_id).first()
+            if not venta:
+                return False, "Venta no encontrada."
+                
+            cantidad_int = int(nueva_cantidad)
+            monto_float = float(nuevo_monto)
+            
+            # Si el producto o la cantidad cambió, ajustamos el stock matemáticamente
+            if venta.producto_nombre != nuevo_producto or venta.cantidad != cantidad_int:
+                # 1. Devolver el producto viejo al inventario
+                prod_viejo = session.query(Producto).filter_by(nombre=venta.producto_nombre, vendedor_email=venta.vendedor_email).first()
+                if prod_viejo:
+                    prod_viejo.stock += venta.cantidad
+                
+                # 2. Descontar el producto nuevo del inventario
+                prod_nuevo = session.query(Producto).filter_by(nombre=nuevo_producto, vendedor_email=venta.vendedor_email).first()
+                if prod_nuevo:
+                    prod_nuevo.stock = max(0, prod_nuevo.stock - cantidad_int)
+                    # Actualizar costo_historico basado en costo_compra actual del nuevo producto
+                    venta.costo_historico = cantidad_int * float(prod_nuevo.costo_compra)
+                else:
+                    venta.costo_historico = 0.0 # No tiene inventario registrado
+                    
+            venta.cliente = nuevo_cliente
+            venta.producto_nombre = nuevo_producto
+            venta.cantidad = cantidad_int
+            venta.monto_total = monto_float
+            
+            session.commit()
+            return True, "Registro actualizado en sistema y control de inventario."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error al editar venta: {e}"
+        finally:
+            session.close()
+
+    def eliminar_abono(self, abono_id):
+        session = self.get_session()
+        try:
+            abono = session.query(Abono).filter_by(id_abono=abono_id).first()
+            if not abono:
+                return False, "Abono no encontrado."
+                
+            session.delete(abono)
+            session.commit()
+            return True, "Abono cancelado exitosamente."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error al eliminar abono: {e}"
+        finally:
+            session.close()
+            
+    def editar_abono(self, abono_id, nuevo_monto, nuevo_metodo):
+        session = self.get_session()
+        try:
+            abono = session.query(Abono).filter_by(id_abono=abono_id).first()
+            if not abono:
+                return False, "Abono no encontrado."
+                
+            abono.monto_abono = float(nuevo_monto)
+            abono.metodo_pago = nuevo_metodo
+            session.commit()
+            return True, "Recibo actualizado correctamente."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error al actualizar abono: {e}"
         finally:
             session.close()
 
