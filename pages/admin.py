@@ -340,9 +340,12 @@ def show():
                 if not df_filtro.empty:
                     st.markdown(f"*{f'Mostrando {len(df_filtro)} resultados' if termino else 'Mostrando las últimas 30 ventas registradas'}*")
                     for _, row in df_filtro.iterrows():
+                        fecha_str = row.get('Fecha_Venta', '')
+                        fecha_html = f"<span style='float:right; font-size:13px; font-weight:normal; color:#64748b;'>{fecha_str}</span>" if fecha_str else ""
+                        
                         st.markdown(f'''
                         <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #3b82f6; margin-bottom: 10px;">
-                            <div style="font-weight:bold; font-size:16px;">Venta #{row['ID_Venta']} - {row['Cliente']}</div>
+                            <div style="font-weight:bold; font-size:16px;">Venta #{row['ID_Venta']} - {row['Cliente']} {fecha_html}</div>
                             <div style="color: #475569; font-size: 14px; margin-bottom: 0px;">{row['Nombre_Vendedor']} vendió <b>{row.get('Cantidad', 1)}x {row['Producto']}</b> por <b>${row['Total_Venta']:,.2f}</b></div>
                         </div>
                         ''', unsafe_allow_html=True)
@@ -365,13 +368,27 @@ def show():
                     st.warning("No se encontró ninguna Venta coincidente.")
         else:
             if not df_abonos_global.empty:
-                df_filtro = df_abonos_global
+                # Mergeamos antes de filtrar para que el buscador encuentre nombres de cliente
+                if not df_todas.empty:
+                    df_ab_enrich = pd.merge(
+                        df_abonos_global,
+                        df_todas[["ID_Venta", "Cliente", "Producto", "Nombre_Vendedor"]],
+                        left_on="venta_id",
+                        right_on="ID_Venta",
+                        how="left"
+                    )
+                else:
+                    df_ab_enrich = df_abonos_global
+                    
+                df_filtro = df_ab_enrich
                 
                 if termino:
-                    df_filtro = df_abonos_global[
-                        df_abonos_global["id_abono"].astype(str).str.lower().str.contains(termino) |
-                        df_abonos_global["venta_id"].astype(str).str.lower().str.contains(termino) |
-                        df_abonos_global["monto_abono"].astype(str).str.lower().str.contains(termino)
+                    df_filtro = df_ab_enrich[
+                        df_ab_enrich["id_abono"].astype(str).str.lower().str.contains(termino) |
+                        df_ab_enrich["venta_id"].astype(str).str.lower().str.contains(termino) |
+                        df_ab_enrich["monto_abono"].astype(str).str.lower().str.contains(termino) |
+                        df_ab_enrich.get("Cliente", pd.Series(dtype=str)).astype(str).str.lower().str.contains(termino) |
+                        df_ab_enrich.get("Nombre_Vendedor", pd.Series(dtype=str)).astype(str).str.lower().str.contains(termino)
                     ]
                 
                 # Acotar resultados 
@@ -382,20 +399,18 @@ def show():
                     for _, row in df_filtro.iterrows():
                         venta_id_asociada = row['venta_id']
                         
-                        # Extraer contexto de la venta a través de df_todas
-                        info_cl = "Cliente Desconocido"
-                        info_prod = "Producto Desconocido"
-                        vendedor = "Vendedor Desconocido"
-                        if not df_todas.empty:
-                            vg = df_todas[df_todas["ID_Venta"] == venta_id_asociada]
-                            if not vg.empty:
-                                info_cl = vg.iloc[0]["Cliente"]
-                                info_prod = vg.iloc[0]["Producto"]
-                                vendedor = vg.iloc[0]["Nombre_Vendedor"]
+                        info_cl = row.get("Cliente", "Cliente Desconocido") if pd.notna(row.get("Cliente")) else "Cliente Desconocido"
+                        info_prod = row.get("Producto", "Producto Desconocido") if pd.notna(row.get("Producto")) else "Producto Desconocido"
+                        vendedor = row.get("Nombre_Vendedor", "Vendedor Desconocido") if pd.notna(row.get("Nombre_Vendedor")) else "Vendedor Desconocido"
+                        
+                        # Extraer fecha del abono
+                        fecha_ab = row.get('fecha_abono')
+                        fecha_ab_str = fecha_ab.strftime("%d-%b-%Y") if pd.notna(fecha_ab) and hasattr(fecha_ab, 'strftime') else ""
+                        fecha_html = f"<span style='float:right; font-size:13px; font-weight:normal; color:#64748b;'>{fecha_ab_str}</span>" if fecha_ab_str else ""
                                 
                         st.markdown(f'''
                         <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 10px;">
-                            <div style="font-weight:bold; font-size:16px;">Abono #{row['id_abono']} <span style="font-size:13px; font-weight:normal; color:#64748b;">(De la Venta #{venta_id_asociada})</span></div>
+                            <div style="font-weight:bold; font-size:16px;">Abono #{row['id_abono']} <span style="font-size:13px; font-weight:normal; color:#64748b;">(De la Venta #{venta_id_asociada})</span> {fecha_html}</div>
                             <div style="color: #475569; font-size: 14px; margin-bottom: 4px;">Depositado por: <b>{info_cl}</b> ({info_prod})</div>
                             <div style="color: #64748b; font-size: 12px; margin-bottom: 8px;">Cobrador/Gestor: {vendedor}</div>
                             <div style="color: #047857; font-size: 18px; font-weight:900; margin-bottom: 0px;">+ ${row['monto_abono']:,.2f} <span style="font-size:13px; font-weight:normal; color:#64748b;">({row['metodo_pago']})</span></div>
