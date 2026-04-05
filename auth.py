@@ -73,13 +73,15 @@ def check_password():
         return True
 
     # Login form (Ofuscado intencionalmente por seguridad)
-    st.title("FB-Catalogo")
-    st.markdown("Plataforma de consulta restringida.")
-    
-    with st.form("login_form"):
-        username = st.text_input("Correo Asignado")
-        password = st.text_input("Token de Seguridad", type="password")
-        submit_button = st.form_submit_button("Validar Acceso")
+    box_login = st.empty()
+    with box_login.container():
+        st.title("FB-Catalogo")
+        st.markdown("Plataforma de consulta restringida.")
+        
+        with st.form("login_form"):
+            username = st.text_input("Correo Asignado")
+            password = st.text_input("Token de Seguridad", type="password")
+            submit_button = st.form_submit_button("Validar Acceso")
 
     if submit_button:
         # Extraer IP remota para el candado de seguridad
@@ -110,8 +112,9 @@ def check_password():
             st.session_state.user_role = user.rol
             st.session_state.user_comision = user.tasa_comision
             st.session_state.user_email = user.email
-            st.success("Acceso concedido. Cargando...")
-            st.rerun()
+            
+            box_login.empty() # Destruir el formulario de la UI
+            return True # Retornar positivo para que app.py dibuje, permitiendo que la App mande la nueva URL sin abortar ejecución
         else:
             st.error(f"❌ {msj_respuesta}")
 
