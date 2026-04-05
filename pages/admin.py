@@ -54,6 +54,21 @@ def show():
             st.dataframe(df_com, hide_index=True, width="stretch")
             
             st.markdown("---")
+            st.subheader("🧪 Rentabilidad Específica por Perfume")
+            if "Proveedor" in df_todas.columns:
+                df_perfumes = df_todas.groupby(["Proveedor", "Producto"]).agg({
+                    "Total_Venta": ["count", "sum"],
+                    "Costo_Producto": "sum",
+                    "IVA_(16%)": "sum",
+                    "Comision_Generada": "sum",
+                    "Utilidad_Neta": "sum"
+                })
+                # Aplanar los niveles del DataFrame generados por count/sum
+                df_perfumes.columns = ["Unidades_Vendidas", "Bruto_Ingresado", "Inversion_Total", "IVA_Retenido", "Comisiones_Pagadas", "Utilidad_Real_Meta"]
+                df_perfumes = df_perfumes.reset_index().sort_values(by="Utilidad_Real_Meta", ascending=False)
+                st.dataframe(df_perfumes, hide_index=True, width="stretch")
+            
+            st.markdown("---")
             st.subheader("⚠️ Alertas de Deudores")
             
             df_adeudos = df_todas[df_todas["Estado_Venta"] == "Adeudo"].copy()
@@ -104,11 +119,15 @@ def show():
             # Cargar su inventario actual
             df_inventario = db.leer_inventario(vendedor_email=vendedor_sel_email)
             
-            # Formatear el Dataframe para el Data Editor (Agregando Costo Compra por ser Admin)
+            # Formatear el Dataframe para el Data Editor (Agregando Costo Compra y Proveedor por ser Admin)
             if not df_inventario.empty:
-                df_editor = df_inventario[["nombre", "precio", "costo_compra", "stock"]].copy() if "costo_compra" in df_inventario.columns else df_inventario[["nombre", "precio", "stock"]].copy()
+                columnas = ["nombre", "precio"]
+                if "costo_compra" in df_inventario.columns: columnas.append("costo_compra")
+                if "proveedor" in df_inventario.columns: columnas.append("proveedor")
+                columnas.append("stock")
+                df_editor = df_inventario[columnas].copy()
             else:
-                df_editor = pd.DataFrame(columns=["nombre", "precio", "costo_compra", "stock"])
+                df_editor = pd.DataFrame(columns=["nombre", "precio", "costo_compra", "proveedor", "stock"])
                 
             edited_df = st.data_editor(
                 df_editor, 
@@ -118,6 +137,7 @@ def show():
                     "nombre": st.column_config.TextColumn("Nombre del Producto", required=True),
                     "precio": st.column_config.NumberColumn("Precio Final ($)", min_value=0.0, format="%.2f", required=False),
                     "costo_compra": st.column_config.NumberColumn("Costo Compra ($)", min_value=0.0, format="%.2f", required=False),
+                    "proveedor": st.column_config.TextColumn("Proveedor", required=False),
                     "stock": st.column_config.NumberColumn("Unidades Físicas", min_value=0, step=1, required=False)
                 }
             )
