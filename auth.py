@@ -73,21 +73,31 @@ def check_password():
     if st.session_state.get("logged_in", False):
         return True
 
-    # Login form
-    st.title("Acceso al Sistema ERP")
-    st.markdown("Por favor, ingresa tus credenciales.")
+    # Login form (Ofuscado intencionalmente por seguridad)
+    st.title("Portal Intranet D3v")
+    st.markdown("Plataforma de consulta restringida.")
     
     with st.form("login_form"):
-        username = st.text_input("Correo Electrónico")
-        password = st.text_input("Contraseña", type="password")
-        submit_button = st.form_submit_button("Entrar")
+        username = st.text_input("Correo Asignado")
+        password = st.text_input("Token de Seguridad", type="password")
+        submit_button = st.form_submit_button("Validar Acceso")
 
     if submit_button:
+        # Extraer IP remota para el candado de seguridad
+        client_ip = "Desconocida"
+        if hasattr(st, "context") and hasattr(st.context, "headers"):
+            # A veces viene en un array o separada por comas, tomamos la primera si es que existe
+            x_forwarded = st.context.headers.get("X-Forwarded-For")
+            if x_forwarded:
+                client_ip = x_forwarded.split(',')[0].strip()
+            else:
+                client_ip = st.context.headers.get("X-Real-IP", "Desconocida")
+
         # Importar y usar la conexión a DB
         from database import DatabaseHandler
         db = DatabaseHandler()
         
-        is_valid, user = db.login(username, password)
+        is_valid, user, msj_respuesta = db.login_seguro(username, password, client_ip)
         
         if is_valid:
             # Set cookie for 10 days! (Garantiza sesión de más de una semana)
@@ -102,7 +112,7 @@ def check_password():
             st.success("Acceso concedido. Cargando...")
             st.rerun()
         else:
-            st.error("😕 Correo o contraseña incorrectos.")
+            st.error(f"❌ {msj_respuesta}")
 
     return False
 
