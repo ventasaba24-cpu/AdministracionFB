@@ -74,7 +74,7 @@ def check_password():
         return True
 
     # Login form (Ofuscado intencionalmente por seguridad)
-    st.title("Portal Intranet D3v")
+    st.title("FB-Catalogo")
     st.markdown("Plataforma de consulta restringida.")
     
     with st.form("login_form"):
