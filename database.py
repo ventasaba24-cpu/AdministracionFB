@@ -103,9 +103,17 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
                  conn.execute(text("UPDATE ventas SET fecha_cobro_comision = fecha_venta WHERE comision_cobrada = 1 AND fecha_cobro_comision IS NULL"))
                  conn.commit()
         except:
-             pass # Ya existe o es una database PostgreSQL en la nube
+             pass # Ya existe
     else:
+        # Entorno PostgreSQL (Nube Supabase)
         engine = create_engine(db_path, pool_pre_ping=True, pool_size=5, max_overflow=10)
+        try:
+             with engine.connect() as conn:
+                 conn.execute(text("ALTER TABLE ventas ADD COLUMN fecha_cobro_comision TIMESTAMP"))
+                 conn.execute(text("UPDATE ventas SET fecha_cobro_comision = fecha_venta WHERE comision_cobrada = true AND fecha_cobro_comision IS NULL"))
+                 conn.commit()
+        except:
+             pass # Ya existe la columna
         
     Base.metadata.create_all(engine)
     SessionMaker = sessionmaker(bind=engine, expire_on_commit=False)
