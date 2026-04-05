@@ -172,42 +172,117 @@ def show():
             st.info("Aún no tienes ventas registradas.")
 
     with col2:
-        st.subheader("💰 Mis Métricas (Mes Actual)")
+        st.subheader("💰 Mis Métricas Desglosadas")
         
-        # Leer todas las ventas y filtrar
         df_todas = db.obtener_tabla_ventas_completa()
+        df_abonos = db.leer_abonos()
+        
+        # === MÉTRICAS GLOBALES (Siempre visibles) ===
+        st.markdown("##### 🌎 Panorama Global")
+        
+        comisiones_pendientes_global = 0.0
+        comisiones_listas_global = 0.0
+        ventas_totales_global = 0.0
         
         if not df_todas.empty:
-            df_mis_ventas = df_todas[df_todas["Nombre_Vendedor"] == st.session_state.user_name]
+            df_mis_ventas = df_todas[df_todas["Nombre_Vendedor"] == st.session_state.user_name].copy()
+            ventas_totales_global = df_mis_ventas["Total_Venta"].sum()
             
-            ventas_mes = df_mis_ventas["Total_Venta"].sum()
-            
-            # Comisiones de ventas pagadas (Aprobadas para cobro)
             df_pagadas = df_mis_ventas[df_mis_ventas["Estado_Venta"] == "Pagado"]
+            comisiones_listas_global = df_pagadas[df_pagadas["Comision_Fisicamente_Cobrada"] == False]["Comision_Generada"].sum()
             
-            # Filtrar las que ya cobró físicamente vs las que están listas
-            comisiones_ya_cobradas = df_pagadas[df_pagadas["Comision_Fisicamente_Cobrada"] == True]["Comision_Generada"].sum()
-            comisiones_listas = df_pagadas[df_pagadas["Comision_Fisicamente_Cobrada"] == False]["Comision_Generada"].sum()
-            
-            # Comisiones pendientes de ventas con adeudo
             df_adeudos_metric = df_mis_ventas[df_mis_ventas["Estado_Venta"] == "Adeudo"]
-            comisiones_pendientes = df_adeudos_metric["Comision_Generada"].sum()
-        else:
-            ventas_mes = 0.0
-            comisiones_ya_cobradas = 0.0
-            comisiones_listas = 0.0
-            comisiones_pendientes = 0.0
-        
-        st.metric(label="Ventas del Mes", value=f"${ventas_mes:,.2f} MXN")
-        
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            st.metric(label="💰 Comisiones en Bolsillo", value=f"${comisiones_ya_cobradas:,.2f} MXN", delta="Ya Cobradas")
-        with col_m2:
-            st.metric(label="🟢 Listas para Retirar", value=f"${comisiones_listas:,.2f} MXN", delta="Disponibles", delta_color="normal")
+            comisiones_pendientes_global = df_adeudos_metric["Comision_Generada"].sum()
             
-        st.metric(label="Comisiones Pendientes", value=f"${comisiones_pendientes:,.2f} MXN", delta="Se pagan al liquidar adeudo", delta_color="off")
+            # Formatear fechas para operaciones
+            df_mis_ventas["Fecha_Venta_DT"] = pd.to_datetime(df_mis_ventas["Fecha_Venta"], format="%d-%b-%Y", errors='coerce')
+            df_mis_ventas["Fecha_Cobro_Comision_DT"] = pd.to_datetime(df_mis_ventas["Fecha_Cobro_Comision"], format="%d-%b-%Y", errors='coerce')
+        else:
+            df_mis_ventas = pd.DataFrame()
+            
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            st.metric("🟢 Listas para Retirar", f"${comisiones_listas_global:,.2f} MXN")
+        with col_g2:
+            st.metric("🔴 Pendientes (Adeudos)", f"${comisiones_pendientes_global:,.2f} MXN")
+            
+        st.metric("🏆 Ventas Históricas Totales", f"${ventas_totales_global:,.2f} MXN")
         
+        st.markdown("---")
+        st.markdown("##### 📅 Rendimiento por Mes")
+        
+        # --- LÓGICA DE 5 MESES ANTERIORES ---
+        meses_nombres = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        
+        # Calcular los ultimos 5 meses de forma robusta
+        hoy = datetime.datetime.now()
+        ultimos_meses_str = []
+        periodos = []
+        
+        for i in range(5):
+            mes_calculado = hoy.month - i
+            año_calculado = hoy.year
+            if mes_calculado <= 0:
+                mes_calculado += 12
+                año_calculado -= 1
+                
+            nombre_mes = f"{meses_nombres[mes_calculado - 1]} {año_calculado}"
+            if i == 0:
+                nombre_mes = f"🗓️ {meses_nombres[mes_calculado - 1]} (Actual)"
+            else:
+                nombre_mes = f"🗓️ {meses_nombres[mes_calculado - 1]}"
+                
+            ultimos_meses_str.append(nombre_mes)
+            periodos.append((año_calculado, mes_calculado))
+
+        # Crear los tabs de Streamlit
+        tabs = st.tabs(ultimos_meses_str)
+        
+        for index, tab in enumerate(tabs):
+            with tab:
+                año_m, mes_m = periodos[index]
+                
+                # Calcular datos específicos para este mes
+                ventas_mes_val = 0.0
+                ventas_cerradas_val = 0.0
+                abonos_mes_val = 0.0
+                comisiones_recibidas_val = 0.0
+                
+                if not df_mis_ventas.empty:
+                    # 1. Ventas Totales iniciadas en este mes
+                    df_mes = df_mis_ventas[(df_mis_ventas["Fecha_Venta_DT"].dt.year == año_m) & (df_mis_ventas["Fecha_Venta_DT"].dt.month == mes_m)]
+                    ventas_mes_val = df_mes["Total_Venta"].sum()
+                    
+                    # 2. Ventas Cerradas del mes (Pagadas completamente independientemente de cuando se iniciaron)
+                    # wait: The prompt asked for "ventas cerradas del mes". This usually means Sales originating in that month that are entirely paid, OR Sales that reached paid status in that month. Usually it means the former if we calculate "Ventas" metrics.
+                    ventas_cerradas_val = df_mes[df_mes["Estado_Venta"] == "Pagado"]["Total_Venta"].sum()
+                    
+                    # 4. Comisiones retiradas físimacamente en este mes
+                    df_cobros_mes = df_mis_ventas[(df_mis_ventas["Fecha_Cobro_Comision_DT"].dt.year == año_m) & (df_mis_ventas["Fecha_Cobro_Comision_DT"].dt.month == mes_m)]
+                    comisiones_recibidas_val = df_cobros_mes["Comision_Generada"].sum()
+                
+                # 3. Abonos del mes
+                if not df_abonos.empty and not df_mis_ventas.empty:
+                    # Filtrar solo abonos de las ventas DE ESTE vendedor
+                    mis_ventas_ids = df_mis_ventas["ID_Venta"].tolist()
+                    df_abonos_mios = df_abonos[df_abonos["venta_id"].isin(mis_ventas_ids)].copy()
+                    
+                    if not df_abonos_mios.empty:
+                        df_abonos_mios["fecha_dt"] = pd.to_datetime(df_abonos_mios["fecha_abono"], errors='coerce')
+                        abonos_mes = df_abonos_mios[(df_abonos_mios["fecha_dt"].dt.year == año_m) & (df_abonos_mios["fecha_dt"].dt.month == mes_m)]
+                        abonos_mes_val = abonos_mes["monto_abono"].sum()
+                        
+                # Dibujar UI de metricas del mes seleccionado
+                st.markdown(f"**Resumen de {meses_nombres[mes_m-1]} {año_m}**")
+                
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.metric("🛒 Ventas del Mes", f"${ventas_mes_val:,.2f} MXN")
+                    st.metric("💸 Abonos Recibidos", f"${abonos_mes_val:,.2f} MXN")
+                with c2:
+                    st.metric("📦 Ventas Pagadas al 100%", f"${ventas_cerradas_val:,.2f} MXN")
+                    st.metric("💰 Comisiones Retiradas", f"${comisiones_recibidas_val:,.2f} MXN")
+                    
         st.markdown("---")
         
         st.subheader("⚠️ Clientes con Adeudo")
