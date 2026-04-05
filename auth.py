@@ -18,6 +18,10 @@ def check_password():
             cookie_manager.delete("session_token")
         except KeyError:
             pass
+            
+        if "session_token" in st.query_params:
+            del st.query_params["session_token"]
+            
         # Destruir estado
         for key in list(st.session_state.keys()):
             del st.session_state[key]
@@ -26,14 +30,17 @@ def check_password():
         st.success("Sesión cerrada. Selecciona la barra de navegación para continuar.")
         return False
 
+    # MÉTODO INFALIBLE PARA CELULARES (Evita bloqueo ITP de Safari/iOS)
+    # Streamlit guarda estos parámetros en la barra de direcciones que nunca se borra con un F5.
+    user_token = st.query_params.get("session_token", None)
+
     # Get cookie token if exists (Priorizando el método nativo súper rápido de Streamlit 1.35+)
-    user_token = None
-    if hasattr(st, "context") and hasattr(st.context, "cookies"):
-        user_token = st.context.cookies.get("session_token")
-        
     if not user_token:
-        # Fallback al cookie manager asíncrono si es versión antigua
-        user_token = cookie_manager.get(cookie="session_token")
+        if hasattr(st, "context") and hasattr(st.context, "cookies"):
+            user_token = st.context.cookies.get("session_token")
+        if not user_token:
+            # Fallback al cookie manager asíncrono si es versión antigua
+            user_token = cookie_manager.get(cookie="session_token")
 
     # If the user has a token but is not logged in yet (this happens on refresh)
     if user_token and not st.session_state.get("logged_in", False):
@@ -95,6 +102,8 @@ def check_password():
             # Set cookie for 10 days! (Garantiza sesión de más de una semana)
             expire_date = datetime.datetime.now() + datetime.timedelta(days=10)
             cookie_manager.set("session_token", user.email, expires_at=expire_date)
+            # MÉTODO CELULAR: Colocar la sesión en la URL (No falla ante el bloqueo de Apple a Iframes)
+            st.query_params["session_token"] = user.email
             
             st.session_state.logged_in = True
             st.session_state.user_name = user.nombre
