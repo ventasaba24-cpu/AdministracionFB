@@ -362,28 +362,88 @@ def show():
 
     # --- SECCIÓN: GANANCIAS DE RED (MULTI-NIVEL) ---
     st.markdown("---")
-    st.subheader("🌐 Mis Ganancias de Red (Liderazgo)")
-    st.markdown("Aquí se reflejan las ganancias generadas automáticamente (5%) por las ventas **cerradas y liquidadas al 100%** de los vendedores que tú patrocinaste.")
+    st.subheader("🌐 Portal de Liderazgo (Red MLM 3 Niveles)")
+    st.markdown("Aquí se reflejan las ganancias generadas automáticamente por las ventas **cerradas y liquidadas al 100%** de toda tu red descendente jerárquica.")
     
-    df_red, bono_total_red = db.leer_metricas_red(st.session_state.user_email)
+    df_red, niveles_dict, bono_total_red, miembros_red = db.leer_metricas_red(st.session_state.user_email)
     
-    if not df_red.empty:
+    if bono_total_red > 0 or miembros_red:
         st.markdown(f'''
         <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 20px; border-radius: 12px; color: white; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            <h3 style="margin: 0; font-size: 18px; font-weight: 500;">Acumulado a Cobrar por Liderazgo</h3>
+            <h3 style="margin: 0; font-size: 18px; font-weight: 500;">Acumulado Global a Cobrar (3 Niveles)</h3>
             <h1 style="margin: 5px 0 0 0; font-size: 36px; font-weight: 800;">${bono_total_red:,.2f} MXN</h1>
         </div>
         ''', unsafe_allow_html=True)
         
-        st.write("### 📝 Desglose de Ventas de tu Equipo (Ya Liquidadas)")
-        for _, row in df_red.iterrows():
-            st.markdown(f'''
-            <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 10px;">
-                <div style="font-weight:bold; font-size:16px;">Venta a: {row['Cliente']} <span style="float:right; font-size:13px; font-weight:normal; color:#64748b;">🗓️ {row['Fecha']}</span></div>
-                <div style="color: #475569; font-size: 14px; margin-bottom: 4px;">Atendió: <b>{row['Vendedor']}</b> (Monto Final: ${row['Total_Venta']:,.2f})</div>
-                <div style="color: #047857; font-size: 16px; font-weight:bold; margin-bottom: 0px;">Tu Bono (5%): +${row['Bono_Ganado']:,.2f}</div>
-            </div>
-            ''', unsafe_allow_html=True)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Nivel 1 (5%)", f"${niveles_dict[1]['bono']:,.2f}")
+        c2.metric("Nivel 2 (3%)", f"${niveles_dict[2]['bono']:,.2f}")
+        c3.metric("Nivel 3 (2%)", f"${niveles_dict[3]['bono']:,.2f}")
+        
+        st.markdown("---")
+        st.markdown("### 👁️ Rayos X: Cartera de tu Red")
+        st.markdown("Revisa el desempeño exacto y audita las deudas pendientes de tus afiliados.")
+        
+        opciones_miembros = ["Seleccionar miembro..."] + [f"{m['Nombre']} (Nivel {m['Nivel']} - {int(m['Tasa_Paga']*100)}%) | {m['Email']}" for m in miembros_red]
+        miembro_seleccionado_str = st.selectbox("Selecciona un vendedor de tu equipo para inspeccionar:", opciones_miembros)
+        
+        if miembro_seleccionado_str != "Seleccionar miembro...":
+            # Extraer email y nombre
+            email_target = miembro_seleccionado_str.split(" | ")[1]
+            nombre_target = miembro_seleccionado_str.split(" (Nivel")[0]
             
+            st.markdown(f"#### 🔎 Inspeccionando a: **{nombre_target}**")
+            
+            # Obtener datos de este miembro (reutlizando el dataframe global)
+            df_update = db.obtener_tabla_ventas_completa()
+            if not df_update.empty:
+                df_target = df_update[df_update["Nombre_Vendedor"] == nombre_target]
+                
+                if df_target.empty:
+                    st.info(f"{nombre_target} aún no tiene ventas registradas en el sistema.")
+                else:
+                    df_target_adeudos = df_target[df_target["Estado_Venta"] == "Adeudo"][["ID_Venta", "Fecha_Venta", "Cliente", "Producto", "Total_Venta", "Saldo_Pendiente", "Dias_Ultimo_Abono", "Total_Abono"]].copy()
+                    
+                    st.markdown("##### 🚨 Clientes que le deben dinero (Vista de Sólo Lectura)")
+                    if not df_target_adeudos.empty:
+                        df_target_adeudos = df_target_adeudos.sort_values(by="Dias_Ultimo_Abono", ascending=False)
+                        for _, row in df_target_adeudos.iterrows():
+                            dias = int(row["Dias_Ultimo_Abono"]) if pd.notna(row["Dias_Ultimo_Abono"]) else 0
+                            borde = "#ff4b4b" if dias > 30 else ("#ffcc00" if dias >= 20 else "#28a745")
+                            fondo = "rgba(255, 75, 75, 0.1)" if dias > 30 else ("rgba(255, 204, 0, 0.15)" if dias >= 20 else "rgba(40, 167, 69, 0.1)")
+                            
+                            st.markdown(f"""
+                            <div style="border-left: 6px solid {borde}; background-color: {fondo}; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+                                <div style="font-size: 16px; font-weight: bold; margin-bottom: 6px; color: #1f2937;">👤 {row['Cliente']}</div>
+                                <div style="font-size: 14px; margin-bottom: 4px;">📦 <b>Producto:</b> {row['Producto']}</div>
+                                <div style="font-size: 14px; margin-bottom: 4px;">💵 <b>Saldo Pendiente:</b> <span style="font-weight: bold;">${float(row['Saldo_Pendiente']):,.2f}</span></div>
+                                <div style="font-size: 14px;">⏳ <b>Sin abonos hace:</b> {dias} días</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Mostrar un expansor nativo con el resumen en vez de usar el pop-up editable
+                            with st.expander(f"Ver pagos de {row['Cliente']}"):
+                                st.write(f"**Costo Total Original:** ${float(row['Total_Venta']):,.2f}")
+                                st.write(f"**Total Abonado Hasta Ahora:** ${float(row['Total_Abono']):,.2f}")
+                                st.info("🔒 Como líder puedes auditar, pero la cobranza y captura de abonos físicos es responsabilidad administrativa.")
+                    else:
+                        st.success(f"¡Excelente! {nombre_target} no tiene clientes con deudas vigentes.")
+                        
+                    st.divider()
+                    st.markdown("##### 💵 Ventas finalizadas (Generadoras de Regalías)")
+                    if not df_red.empty:
+                        df_target_red = df_red[df_red["Vendedor"] == nombre_target]
+                        if not df_target_red.empty:
+                            for _, row in df_target_red.iterrows():
+                                st.markdown(f'''
+                                <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 10px;">
+                                    <div style="font-weight:bold; font-size:16px;">Venta a: {row['Cliente']} <span style="float:right; font-size:13px; font-weight:normal; color:#64748b;">🗓️ {row['Fecha']}</span></div>
+                                    <div style="color: #475569; font-size: 14px; margin-bottom: 4px;">Monto Cerrado: ${row['Total_Venta']:,.2f}</div>
+                                    <div style="color: #047857; font-size: 16px; font-weight:bold; margin-bottom: 0px;">Tu Bono de Red ({row['Porcentaje']}): +${row['Bono_Ganado']:,.2f}</div>
+                                </div>
+                                ''', unsafe_allow_html=True)
+                        else:
+                            st.write("Aún no ha cerrado deudas completas que generen comisión activa.")
+                    
     else:
-        st.info("Actualmente no tienes vendedores patrocinados con ventas cerradas al 100%.")
+        st.info("Actualmente no tienes vendedores adscritos o en vigencia estructural.")
