@@ -147,10 +147,8 @@ def show():
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
                             <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Ingreso Bruto ({r['Unidades_Vendidas']} uds)</span><br><span style="font-size: 14px; font-weight: 800; color: #0f172a;">${r['Bruto_Ingresado']:,.2f}</span></div>
                             <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Ganancia Real Neta</span><br><span style="font-size: 14px; font-weight: 800; color: {color_margen};">${r['Utilidad_Real_Meta']:,.2f}</span></div>
-                            
                             <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Costo Proveedor</span><br><span style="font-size: 13px; font-weight: 800; color: #475569;">${r['Inversion_Total']:,.2f}</span></div>
                             <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Comisiones Listas</span><br><span style="font-size: 13px; font-weight: 800; color: #475569;">${r['Comisiones_Pagadas']:,.2f}</span></div>
-                            
                             <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">IVA Reservado (16%)</span><br><span style="font-size: 13px; font-weight: 800; color: #475569;">${r['IVA_Retenido']:,.2f}</span></div>
                         </div>
                     </div>
