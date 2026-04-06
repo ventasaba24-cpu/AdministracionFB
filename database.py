@@ -313,29 +313,30 @@ class DatabaseHandler:
         finally:
             session.close()
 
-    def corregir_costo_venta(self, id_venta, nuevo_costo_unitario):
-        """Corrige el costo histórico de una venta y (si no existe) registra el producto para su proveedor."""
+    def corregir_costo_y_nombre_venta(self, id_venta, nuevo_costo_unitario, nuevo_nombre_producto):
+        """Corrige el costo histórico y el nombre de una venta, y (si no existe) registra el producto para su proveedor."""
         session = self.get_session()
         try:
             venta = session.query(Venta).filter_by(id=id_venta).first()
             if not venta:
                 return False, "ID de Venta no encontrada."
             
-            # Recalcular el costo total de esta venta en particular
+            # Actualizar nombre y recalcular costo
+            venta.producto_nombre = nuevo_nombre_producto
             venta.costo_historico = float(venta.cantidad) * float(nuevo_costo_unitario)
             
-            # Verificar si el producto ya existe en la base de datos para este vendedor
-            prod = session.query(Producto).filter_by(nombre=venta.producto_nombre, vendedor_email=venta.vendedor_email).first()
+            # Verificar si el producto ya existe en la base con el nombre final
+            prod = session.query(Producto).filter_by(nombre=nuevo_nombre_producto, vendedor_email=venta.vendedor_email).first()
             
             if prod:
                 # Si existe, quizá era un costo 0, lo corregimos
                 if prod.costo_compra == 0.0:
                     prod.costo_compra = float(nuevo_costo_unitario)
             else:
-                # Si no existía (ej. se vendió como 'Otro'), lo agregamos al catálogo
+                # Si no existía lo agregamos al catálogo
                 precio_unitario_venta = venta.monto_total / float(venta.cantidad) if float(venta.cantidad) > 0 else venta.monto_total
                 nuevo_prod = Producto(
-                    nombre=venta.producto_nombre,
+                    nombre=nuevo_nombre_producto,
                     precio=precio_unitario_venta, # Usamos de sugerencia al precio al que lo acaba de vender
                     costo_compra=float(nuevo_costo_unitario),
                     vendedor_email=venta.vendedor_email,
@@ -345,7 +346,7 @@ class DatabaseHandler:
                 session.add(nuevo_prod)
                 
             session.commit()
-            return True, "Costo corregido satisfactoriamente."
+            return True, "Costo y Nombre corregidos satisfactoriamente."
         except Exception as e:
             session.rollback()
             return False, f"Error: {str(e)}"
