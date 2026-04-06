@@ -189,6 +189,7 @@ def show():
         comisiones_pendientes_global = 0.0
         comisiones_listas_global = 0.0
         ventas_totales_global = 0.0
+        cartera_total_global = 0.0
         
         if not df_todas.empty:
             df_mis_ventas = df_todas[df_todas["Nombre_Vendedor"] == st.session_state.user_name].copy()
@@ -199,6 +200,7 @@ def show():
             
             df_adeudos_metric = df_mis_ventas[df_mis_ventas["Estado_Venta"] == "Adeudo"]
             comisiones_pendientes_global = df_adeudos_metric["Comision_Generada"].sum()
+            cartera_total_global = pd.to_numeric(df_adeudos_metric["Saldo_Pendiente"], errors='coerce').sum()
             
             # Formatear fechas para operaciones
             df_mis_ventas["Fecha_Venta_DT"] = pd.to_datetime(df_mis_ventas["Fecha_Venta"], format="%d-%b-%Y", errors='coerce')
@@ -216,6 +218,11 @@ def show():
         <div style="border-left: 5px solid #3b82f6; background-color: rgba(59, 130, 246, 0.08); padding: 15px; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
             <div style="color: #1d4ed8; font-weight: bold; font-size: 15px; margin-bottom: 5px; line-height: 1.3;">🔵 Comisiones pendientes por retirar hasta que se finalice la venta</div>
             <div style="color: #1f2937; font-size: 28px; font-weight: 900;">${comisiones_pendientes_global:,.2f} <span style="font-size:16px; color:#6b7280; font-weight:600;">MXN</span></div>
+        </div>
+        
+        <div style="border-left: 5px solid #ef4444; background-color: rgba(239, 68, 68, 0.08); padding: 15px; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+            <div style="color: #b91c1c; font-weight: bold; font-size: 15px; margin-bottom: 5px; line-height: 1.3;">🔴 Cartera Total (Dinero Pendiente a Cobrar)</div>
+            <div style="color: #1f2937; font-size: 28px; font-weight: 900;">${cartera_total_global:,.2f} <span style="font-size:16px; color:#6b7280; font-weight:600;">MXN</span></div>
         </div>
         
         <div style="border-left: 5px solid #f59e0b; background-color: rgba(245, 158, 11, 0.08); padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
@@ -302,7 +309,7 @@ def show():
                         <div style="font-size: 21px; font-weight: 900; color: #1d4ed8;">${abonos_mes_val:,.2f}</div>
                     </div>
                     <div style="background-color: #f3f4f6; padding: 12px; border-radius: 8px; border-bottom: 3px solid #10b981;">
-                        <div style="font-size: 13px; color: #4b5563; font-weight: 700; margin-bottom: 4px; line-height: 1.2;">📦 Ventas 100% Pagadas</div>
+                        <div style="font-size: 13px; color: #4b5563; font-weight: 700; margin-bottom: 4px; line-height: 1.2;">📦 Ventas 100% Cerradas</div>
                         <div style="font-size: 21px; font-weight: 900; color: #047857;">${ventas_cerradas_val:,.2f}</div>
                     </div>
                     <div style="background-color: #f3f4f6; padding: 12px; border-radius: 8px; border-bottom: 3px solid #f59e0b;">
