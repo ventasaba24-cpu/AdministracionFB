@@ -110,7 +110,7 @@ def show():
                 """, unsafe_allow_html=True)
             
             st.markdown("---")
-            st.subheader("🧪 Rentabilidad Específica por Perfume")
+            st.subheader("🧪 Rentabilidad Específica por Producto")
             if "Proveedor" in df_todas.columns:
                 df_perfumes = df_todas.groupby(["Proveedor", "Producto"]).agg({
                     "Total_Venta": ["count", "sum"],
@@ -124,12 +124,34 @@ def show():
                 df_perfumes = df_perfumes.reset_index().sort_values(by="Utilidad_Real_Meta", ascending=False)
                 
                 for _, r in df_perfumes.iterrows():
+                    margen = 0.0
+                    if r['Bruto_Ingresado'] > 0:
+                        margen = (r['Utilidad_Real_Meta'] / r['Bruto_Ingresado']) * 100
+                    
+                    if margen < 5.0:
+                        color_margen = "#ef4444" # Rojo (Peligro, menos del 5%)
+                        emoji_margen = "🔴"
+                    elif margen <= 10.0:
+                        color_margen = "#f59e0b" # Amarillo (Regular, 5% al 10%)
+                        emoji_margen = "🟡"
+                    else:
+                        color_margen = "#10b981" # Verde (Óptimo, más del 10%)
+                        emoji_margen = "🟢"
+
                     st.markdown(f"""
-                    <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #8b5cf6; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                        <div style="font-size: 15px; font-weight: bold; color: #1e293b; margin-bottom: 4px;">🧪 {r['Proveedor']} - {r['Producto']}</div>
+                    <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid {color_margen}; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
+                            <div style="font-size: 15px; font-weight: bold; color: #1e293b;">🧪 {r['Proveedor']} - {r['Producto']}</div>
+                            <div style="font-size: 11px; font-weight: 800; color: {color_margen}; background-color: {color_margen}15; padding: 3px 8px; border-radius: 12px;">{emoji_margen} {margen:.1f}% Margen</div>
+                        </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
-                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Unidades (Ingreso)</span><br><span style="font-size: 15px; font-weight: 800; color: #0f172a;">{r['Unidades_Vendidas']} ud / ${r['Bruto_Ingresado']:,.2f}</span></div>
-                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Ganancia Real Neta</span><br><span style="font-size: 15px; font-weight: 800; color: #10b981;">${r['Utilidad_Real_Meta']:,.2f}</span></div>
+                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Ingreso Bruto ({r['Unidades_Vendidas']} uds)</span><br><span style="font-size: 14px; font-weight: 800; color: #0f172a;">${r['Bruto_Ingresado']:,.2f}</span></div>
+                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Ganancia Real Neta</span><br><span style="font-size: 14px; font-weight: 800; color: {color_margen};">${r['Utilidad_Real_Meta']:,.2f}</span></div>
+                            
+                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Costo Proveedor</span><br><span style="font-size: 13px; font-weight: 800; color: #475569;">${r['Inversion_Total']:,.2f}</span></div>
+                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Comisiones Listas</span><br><span style="font-size: 13px; font-weight: 800; color: #475569;">${r['Comisiones_Pagadas']:,.2f}</span></div>
+                            
+                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">IVA Reservado (16%)</span><br><span style="font-size: 13px; font-weight: 800; color: #475569;">${r['IVA_Retenido']:,.2f}</span></div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
