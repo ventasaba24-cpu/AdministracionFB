@@ -249,10 +249,12 @@ def show():
                         d_b = DatabaseHandler()
                         status, msj = d_b.corregir_costo_y_nombre_venta(int(venta_sel_id), float(nuevo_costo), nuevo_nombre)
                         if status:
-                            st.success(f"¡Éxito! {msj}")
+                            st.success(f"✅ ¡Excelente! {msj} Recargando la vista...")
+                            import time
+                            time.sleep(1.5)
                             st.rerun()
                         else:
-                            st.error(msj)
+                            st.error(f"❌ Ocurrió un fallo: {msj}")
         else:
             st.info("No hay ventas registradas aún.")
 
@@ -557,3 +559,50 @@ def show():
                         st.markdown("<br>", unsafe_allow_html=True)
                 else:
                     st.warning("No se encontró ningún Abono coincidente.")
+                    
+    # ----------------------------------------------------
+    # SCRIPT TEMPORAL DE MANTENIMIENTO: BOTON DE UNIFICACION
+    # ----------------------------------------------------
+    st.markdown("---")
+    st.subheader("🧹 Mantenimiento de Base de Datos")
+    st.warning("Ejecutar limpieza automática para unificar todos los registros como 'La Vie Est Belle 150 ml'")
+    if st.button("🧼 Unificar todo a 'La Vie Est Belle 150 ml' Ahora", type="primary"):
+        with st.spinner("Unificando historial..."):
+            session = db.get_session()
+            from database import Venta, Producto
+            try:
+                target_name = "La Vie Est Belle 150 ml"
+                
+                # Update Ventas (viaja a todos los historiales)
+                ventas = session.query(Venta).filter(Venta.producto_nombre.ilike("%vie%est%belle%")).all()
+                for v in ventas:
+                    v.producto_nombre = target_name
+                
+                # Update Productos (limpia el catalogo)
+                productos = session.query(Producto).filter(Producto.nombre.ilike("%vie%est%belle%")).all()
+                vendor_dict = {}
+                for p in productos:
+                    vendor_dict.setdefault(p.vendedor_email, []).append(p)
+                
+                for vendor_email, prods in vendor_dict.items():
+                    target_p = session.query(Producto).filter_by(nombre=target_name, vendedor_email=vendor_email).first()
+                    best_p = target_p
+                    
+                    for p in prods:
+                        if p == best_p: continue
+                        if not best_p:
+                            p.nombre = target_name
+                            best_p = p
+                        else:
+                            # Transferir costo si el master no tiene
+                            if best_p.costo_compra == 0.0 and p.costo_compra > 0.0:
+                                best_p.costo_compra = p.costo_compra
+                            session.delete(p)
+                            
+                session.commit()
+                st.success("✅ ¡ÉXITO! Base de Datos Limpiada y Unificada al 100%. Todo dice 'La Vie Est Belle 150 ml'.")
+            except Exception as e:
+                session.rollback()
+                st.error(f"Error: {e}")
+            finally:
+                session.close()
