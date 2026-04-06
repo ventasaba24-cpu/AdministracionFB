@@ -156,14 +156,7 @@ def show():
                         factor_divisor = 1.0 - tasa_comision - tasa_iva - margen_objetivo
                         if factor_divisor > 0:
                             precio_sugerido = c_unit / factor_divisor
-                            alerta_html = f'''
-                            <div style="margin-top: 12px; background-color: #fef2f2; padding: 10px; border-radius: 6px; border: 1px solid #fca5a5;">
-                                <div style="font-size: 12px; color: #991b1b; font-weight: bold;">⚠️ Recomendación Financiera:</div>
-                                <div style="font-size: 13px; color: #7f1d1d; margin-top: 2px;">
-                                    Estás en pérdida neta. Para garantizar un margen neto del 10% puro (ya cubriendo las comisiones y el IVA), el <b>Precio de Venta</b> por frasco no debe ser menor a <span style="font-size: 14px; font-weight: 800;">${precio_sugerido:,.2f}</span>
-                                </div>
-                            </div>
-                            '''
+                            alerta_html = f"""<div style="margin-top: 12px; background-color: #fef2f2; padding: 10px; border-radius: 6px; border: 1px solid #fca5a5;"><div style="font-size: 12px; color: #991b1b; font-weight: bold;">⚠️ Recomendación Financiera:</div><div style="font-size: 13px; color: #7f1d1d; margin-top: 2px;">Estás en pérdida neta. Para garantizar un margen neto del 10% puro (ya cubriendo las comisiones y el IVA), el <b>Precio de Venta</b> por frasco no debe ser menor a <span style="font-size: 14px; font-weight: 800;">${precio_sugerido:,.2f}</span></div></div>"""
 
                     st.markdown(f"""
                     <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid {color_margen}; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
