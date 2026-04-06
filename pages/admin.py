@@ -214,7 +214,7 @@ def show():
                 venta_dict = next((v for v in opciones_ventas if v['ID_Venta'] == venta_sel_id), None)
                 sug_costo = float(venta_dict['Costo_Producto']) if venta_dict else 0.0
                 
-                nuevo_costo = st.number_input("Costo Real Unitario a cobrar por proveedor ($)", min_value=0.0, step=10.0, value=sug_costo)
+                nuevo_costo = st.number_input("💰 Costo de Compra al Proveedor (¿Cuánto le costó a la empresa surtir esta botella originalmente?)", min_value=0.0, step=10.0, value=sug_costo)
                 
                 btn_corregir = st.form_submit_button("Guardar Corrección Cíclica")
                 
