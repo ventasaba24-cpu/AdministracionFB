@@ -82,7 +82,7 @@ def show():
                     precio_dict[nombre] = float(row['precio'])
                     stock_dict[nombre] = int(row['stock'])
                     
-        opciones_inventario.append("Otro (Especificar producto fuera de listado)")
+        opciones_inventario.append("➕ Otro (Capturar un producto fuera de lista...)")
         
         producto = st.selectbox("🛒 Producto a Vender", opciones_inventario)
         
@@ -94,16 +94,22 @@ def show():
              limite_cantidad = 1000
              precio_def = 0.0
         
-        with st.form("venta_form"):
-            if producto == "Otro (Especificar producto fuera de listado)":
-                producto_custom = st.text_input("Nombre específico (requerido si marcaste 'Otro')")
+        with st.form("venta_form", clear_on_submit=False):
+            st.markdown("### 📝 Datos de Venta")
+            cliente = st.text_input("👤 Nombre Completo del Cliente", placeholder="Ej: Maria Lopez")
+            
+            if producto == "➕ Otro (Capturar un producto fuera de lista...)":
+                producto_custom = st.text_input("💎 Nombre del producto a vender", placeholder="Ej. Perfume Floral 100ml")
             else:
                 producto_custom = ""
             
-            cliente = st.text_input("Nombre del Cliente")
-            cantidad = st.number_input("Cantidad a vender", min_value=1, max_value=limite_cantidad, value=1)
-            precio = st.number_input("Precio Unitario Final ($)", min_value=0.0, step=10.0, format="%.2f", value=precio_def, key=f"precio_{producto}")
+            # Usar Selectbox en vez de NumberInput para la cantidad (Es más fácil en el celular)
+            opciones_cantidad = list(range(1, min(51, limite_cantidad + 1)))
+            cantidad = st.selectbox("📦 Cantidad a vender", opciones_cantidad)
             
+            precio = st.number_input("💵 Precio Unitario Final ($)", min_value=0.0, step=50.0, format="%.2f", value=precio_def, key=f"precio_{producto}")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
             tipo_v = st.session_state.get("user_tipo_vendedor", "Crédito")
             if tipo_v == "One-Shot":
                 # Forzar cobro total
@@ -118,7 +124,7 @@ def show():
             if submit_venta:
                 if not cliente:
                     st.error("El nombre del cliente es obligatorio.")
-                elif producto == "Otro (Especificar producto fuera de listado)" and not producto_custom:
+                elif producto == "➕ Otro (Capturar un producto fuera de lista...)" and not producto_custom:
                     st.error("Debes especificar el nombre del producto nuevo.")
                 else:
                     prod_final = producto_custom if producto_custom else producto
