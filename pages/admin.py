@@ -94,7 +94,20 @@ def show():
                 "Comision_Generada": "sum",
                 "Utilidad_Neta": "sum"
             }).reset_index()
-            st.dataframe(df_com, hide_index=True, width="stretch")
+            
+            for _, r in df_com.iterrows():
+                costo_iva = r['Costo_Producto'] + r['IVA_(16%)']
+                st.markdown(f"""
+                <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #3b82f6; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                    <div style="font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">👤 {r['Nombre_Vendedor']}</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Ventas Totales</span><br><span style="font-size: 15px; font-weight: 800; color: #0f172a;">${r['Total_Venta']:,.2f}</span></div>
+                        <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Utilidad Neta</span><br><span style="font-size: 15px; font-weight: 800; color: #10b981;">${r['Utilidad_Neta']:,.2f}</span></div>
+                        <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Comisiones</span><br><span style="font-size: 15px; font-weight: 800; color: #f59e0b;">${r['Comision_Generada']:,.2f}</span></div>
+                        <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Costo + IVA</span><br><span style="font-size: 15px; font-weight: 800; color: #ef4444;">${costo_iva:,.2f}</span></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
             
             st.markdown("---")
             st.subheader("🧪 Rentabilidad Específica por Perfume")
@@ -109,7 +122,17 @@ def show():
                 # Aplanar los niveles del DataFrame generados por count/sum
                 df_perfumes.columns = ["Unidades_Vendidas", "Bruto_Ingresado", "Inversion_Total", "IVA_Retenido", "Comisiones_Pagadas", "Utilidad_Real_Meta"]
                 df_perfumes = df_perfumes.reset_index().sort_values(by="Utilidad_Real_Meta", ascending=False)
-                st.dataframe(df_perfumes, hide_index=True, width="stretch")
+                
+                for _, r in df_perfumes.iterrows():
+                    st.markdown(f"""
+                    <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #8b5cf6; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                        <div style="font-size: 15px; font-weight: bold; color: #1e293b; margin-bottom: 4px;">🧪 {r['Proveedor']} - {r['Producto']}</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Unidades (Ingreso)</span><br><span style="font-size: 15px; font-weight: 800; color: #0f172a;">{r['Unidades_Vendidas']} ud / ${r['Bruto_Ingresado']:,.2f}</span></div>
+                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Ganancia Real Neta</span><br><span style="font-size: 15px; font-weight: 800; color: #10b981;">${r['Utilidad_Real_Meta']:,.2f}</span></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
             
             st.markdown("---")
             st.subheader("⚠️ Alertas de Deudores")
@@ -136,7 +159,36 @@ def show():
                 columnas_mostrar = ["ID_Venta", "Nombre_Vendedor", "Cliente", "Producto", "Dias_Ultimo_Abono", "Saldo_Pendiente", "Total_Abono"]
                 df_adeudos_mostrar = df_adeudos[columnas_mostrar]
                 
-                st.dataframe(df_adeudos_mostrar.style.apply(highlight_deudas, axis=1).format({"Saldo_Pendiente": "${:,.2f}", "Total_Abono": "${:,.2f}"}), width="stretch", hide_index=True)
+                for _, r in df_adeudos_mostrar.iterrows():
+                    dias = 0
+                    try:
+                        dias = int(r['Dias_Ultimo_Abono'])
+                    except:
+                        pass
+                    
+                    if dias > 30:
+                        color = "#ef4444" # Rojo
+                        bg_accent = "rgba(239, 68, 68, 0.15)"
+                    elif dias >= 20:
+                        color = "#f59e0b" # Amarillo
+                        bg_accent = "rgba(245, 158, 11, 0.15)"
+                    else:
+                        color = "#10b981" # Verde
+                        bg_accent = "rgba(16, 185, 129, 0.15)"
+
+                    st.markdown(f"""
+                    <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid {color}; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                            <div style="font-size: 16px; font-weight: 900; color: #1e293b;">👤 {r['Cliente']}</div>
+                            <div style="font-size: 11px; font-weight: 800; color: {color}; background-color: {bg_accent}; padding: 3px 8px; border-radius: 12px; white-space: nowrap;">🚨 {dias} Días atraso</div>
+                        </div>
+                        <div style="font-size: 13px; color: #64748b; font-weight: 600; margin-bottom: 10px;">🏷️ {r['Producto']} (Vendedor: {r['Nombre_Vendedor']})</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Total Abonado</span><br><span style="font-size: 15px; font-weight: 800; color: #0f172a;">${r['Total_Abono']:,.2f}</span></div>
+                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Resta a Cobrar</span><br><span style="font-size: 15px; font-weight: 800; color: #ef4444;">${r['Saldo_Pendiente']:,.2f}</span></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
             else:
                 st.success("¡Excelente! No hay clientes con adeudos pendientes.")
             
