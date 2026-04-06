@@ -193,8 +193,40 @@ def show():
                 st.success("¡Excelente! No hay clientes con adeudos pendientes.")
             
             st.markdown("---")
-            st.subheader("Tabla Global de Ventas")
-            st.dataframe(df_todas)
+            with st.expander("Ver Tabla Global de Ventas Cruda", expanded=False):
+                st.dataframe(df_todas)
+                
+            st.markdown("---")
+            st.subheader("🛠️ Corregir Costo Base / Registrar Producto Histórico")
+            st.info("Utiliza esta herramienta si una venta se fue con Costo 0, o si ocupas registrar rápidamente el Costo de Inversión Inicial (Costo a Proveedor) de un producto libre.")
+            
+            # Selectbox de ventas que no tienen costo (o de todas)
+            opciones_ventas = df_todas[["ID_Venta", "Cliente", "Producto", "Total_Venta", "Costo_Producto"]].to_dict('records')
+            opc_formateadas = {
+                v['ID_Venta']: f"ID #{v['ID_Venta']} | {v['Producto']} a {v['Cliente']} | Cobra: ${v['Total_Venta']} | Costo Registrado: ${v['Costo_Producto']}"
+                for v in opciones_ventas
+            }
+            
+            with st.form("form_corregir_costo"):
+                venta_sel_id = st.selectbox("Selecciona la Venta a la que le falta el costo:", options=list(opc_formateadas.keys()), format_func=lambda x: opc_formateadas[x])
+                
+                # Buscar el costo actual real de esta venta en el dataframe
+                venta_dict = next((v for v in opciones_ventas if v['ID_Venta'] == venta_sel_id), None)
+                sug_costo = float(venta_dict['Costo_Producto']) if venta_dict else 0.0
+                
+                nuevo_costo = st.number_input("Costo Real Unitario a cobrar por proveedor ($)", min_value=0.0, step=10.0, value=sug_costo)
+                
+                btn_corregir = st.form_submit_button("Guardar Corrección Cíclica")
+                
+                if btn_corregir:
+                    from database import DatabaseHandler
+                    d_b = DatabaseHandler()
+                    status, msj = d_b.corregir_costo_venta(int(venta_sel_id), float(nuevo_costo))
+                    if status:
+                        st.success(f"¡Éxito! {msj}")
+                        st.rerun()
+                    else:
+                        st.error(msj)
         else:
             st.info("No hay ventas registradas aún.")
 
