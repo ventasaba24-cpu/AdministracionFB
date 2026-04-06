@@ -111,8 +111,9 @@ def show():
             
             st.markdown("---")
             st.subheader("🧪 Rentabilidad Específica por Producto")
-            if "Proveedor" in df_todas.columns:
-                df_perfumes = df_todas.groupby(["Proveedor", "Producto"]).agg({
+            if "Producto" in df_todas.columns:
+                # Agrupamos SOLO por Producto para unificar a nivel empresarial sin importar que un vendedor tenga "Proveedor Generico" y otro "Desconocido"
+                df_perfumes = df_todas.groupby(["Producto"]).agg({
                     "Total_Venta": ["count", "sum"],
                     "Costo_Producto": "sum",
                     "IVA_(16%)": "sum",
@@ -141,7 +142,7 @@ def show():
                     st.markdown(f"""
                     <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid {color_margen}; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
-                            <div style="font-size: 15px; font-weight: bold; color: #1e293b;">🧪 {r['Proveedor']} - {r['Producto']}</div>
+                            <div style="font-size: 15px; font-weight: bold; color: #1e293b;">🧪 {r['Producto']}</div>
                             <div style="font-size: 11px; font-weight: 800; color: {color_margen}; background-color: {color_margen}15; padding: 3px 8px; border-radius: 12px;">{emoji_margen} {margen:.1f}% Margen</div>
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
