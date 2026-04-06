@@ -159,31 +159,26 @@ def show():
                                 <div style="flex: 1; text-align: right; color: #64748b;"><b>Unitario</b></div>
                                 <div style="flex: 1; text-align: right; color: #1e293b;"><b>Global ({uds} uds)</b></div>
                             </div>
-                            
                             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #0f172a; font-weight: 500;">
                                 <div style="flex: 2;">📈 Ingreso Bruto Venta</div>
                                 <div style="flex: 1; text-align: right;">${v_unit:,.2f}</div>
                                 <div style="flex: 1; text-align: right; font-weight: 700;">${r['Bruto_Ingresado']:,.2f}</div>
                             </div>
-
                             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
                                 <div style="flex: 2;">🛒 Costo Compra (Prov)</div>
                                 <div style="flex: 1; text-align: right;">${c_unit:,.2f}</div>
                                 <div style="flex: 1; text-align: right; font-weight: 600;">${r['Inversion_Total']:,.2f}</div>
                             </div>
-                            
                             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
                                 <div style="flex: 2;">🤝 Comisiones Repartidas</div>
                                 <div style="flex: 1; text-align: right;">${com_unit:,.2f}</div>
                                 <div style="flex: 1; text-align: right; font-weight: 600;">${r['Comisiones_Pagadas']:,.2f}</div>
                             </div>
-                            
                             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
                                 <div style="flex: 2;">🏛️ IVA Reservado (16%)</div>
                                 <div style="flex: 1; text-align: right;">${iva_unit:,.2f}</div>
                                 <div style="flex: 1; text-align: right; font-weight: 600;">${r['IVA_Retenido']:,.2f}</div>
                             </div>
-                            
                             <div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #cbd5e1; color: {color_margen};">
                                 <div style="flex: 2; font-weight: bold;">💵 Ganancia Real Neta</div>
                                 <div style="flex: 1; text-align: right;">${net_unit:,.2f}</div>
