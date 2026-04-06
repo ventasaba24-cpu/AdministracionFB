@@ -672,36 +672,68 @@ class DatabaseHandler:
             session.close()
 
     def leer_metricas_red(self, patrocinador_email):
-        """Calcula el rendimiento multinivel del 5% pagado por la empresa sobre ventas liquidadas de su equipo."""
+        """Calcula el rendimiento multinivel de 3 generaciones."""
         session = self.get_session()
         try:
-            usuarios = session.query(Usuario).filter_by(patrocinador_email=patrocinador_email).all()
-            if not usuarios:
-                return pd.DataFrame(), 0.0
+            niveles = {
+                1: {"comision": 0.05, "usuarios": [], "bono": 0.0},
+                2: {"comision": 0.03, "usuarios": [], "bono": 0.0},
+                3: {"comision": 0.02, "usuarios": [], "bono": 0.0}
+            }
             
-            emails_red = [u.email for u in usuarios]
+            # Nivel 1
+            n1 = session.query(Usuario).filter_by(patrocinador_email=patrocinador_email).all()
+            if n1: niveles[1]["usuarios"] = n1
             
-            query = session.query(Venta, Usuario).join(Usuario, Venta.vendedor_email == Usuario.email).filter(
-                Venta.vendedor_email.in_(emails_red),
-                Venta.comision_cobrada == True # Solo ventas 100% cerradas/liquidadas
-            )
-            
+            # Nivel 2
+            if n1:
+                n1_emails = [u.email for u in n1]
+                n2 = session.query(Usuario).filter(Usuario.patrocinador_email.in_(n1_emails)).all()
+                if n2: niveles[2]["usuarios"] = n2
+                
+                # Nivel 3
+                if n2:
+                    n2_emails = [u.email for u in n2]
+                    n3 = session.query(Usuario).filter(Usuario.patrocinador_email.in_(n2_emails)).all()
+                    if n3: niveles[3]["usuarios"] = n3
+                    
             data = []
             bono_total = 0.0
-            for v, u in query.all():
-                # El 5% se calcula del TOTAL de la venta completada
-                mi_5_porciento = float(v.monto_total) * 0.05
-                bono_total += mi_5_porciento
-                
-                data.append({
-                    "Vendedor": u.nombre,
-                    "ID_Venta": v.id,
-                    "Cliente": v.cliente,
-                    "Total_Venta": v.monto_total,
-                    "Bono_Ganado": mi_5_porciento,
-                    "Fecha": v.fecha_venta.strftime("%Y-%m-%d") if v.fecha_venta else ""
-                })
-                
-            return pd.DataFrame(data), bono_total
+            miembros_red = []
+            
+            for nv, info in niveles.items():
+                if info["usuarios"]:
+                    emails_nv = [u.email for u in info["usuarios"]]
+                    
+                    for u in info["usuarios"]:
+                        miembros_red.append({
+                            "Nombre": u.nombre, 
+                            "Email": u.email,
+                            "Nivel": nv,
+                            "Tasa_Paga": info["comision"]
+                        })
+                    
+                    query = session.query(Venta, Usuario).join(Usuario, Venta.vendedor_email == Usuario.email).filter(
+                        Venta.vendedor_email.in_(emails_nv),
+                        Venta.comision_cobrada == True # Solo liquidadas
+                    )
+                    
+                    for v, u in query.all():
+                        mi_ganancia = float(v.monto_total) * info["comision"]
+                        info["bono"] += mi_ganancia
+                        bono_total += mi_ganancia
+                        
+                        data.append({
+                            "Nivel": nv,
+                            "Vendedor": u.nombre,
+                            "ID_Venta": v.id,
+                            "Cliente": v.cliente,
+                            "Total_Venta": v.monto_total,
+                            "Bono_Ganado": mi_ganancia,
+                            "Porcentaje": f"{int(info['comision']*100)}%",
+                            "Fecha": v.fecha_venta.strftime("%Y-%m-%d") if v.fecha_venta else ""
+                        })
+                        
+            return pd.DataFrame(data), niveles, bono_total, miembros_red
         finally:
             session.close()
