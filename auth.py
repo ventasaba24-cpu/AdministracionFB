@@ -13,19 +13,8 @@ def check_password():
         
         st.session_state.logged_in = False
         
-        # Inyectar una instrucción Javascript directa al navegador para forzar 
-        # un F5 real (Refresh). Esto vacía la memoria persistente de Safari/iOS.
-        import streamlit.components.v1 as components
-        components.html("""
-            <script>
-            setTimeout(function() {
-                window.parent.location.href = window.parent.location.pathname;
-            }, 500);
-            </script>
-        """, height=0)
-        
-        st.info("🔄 Cerrando sesión, por favor espera...")
-        st.stop() # Abortamos ejecución para dar tiempo al JS de recargar la página
+        # Al limpiarse el query param y el state, rerun lo lanzará al login nativamente
+        st.rerun()
 
     # MÉTODO INFALIBLE PARA CELULARES Y NUBE:
     # Utilizar exclusivamente la Barra de Direcciones nativa, sin librerías externas de cookies propensas al lag.
