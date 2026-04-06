@@ -207,14 +207,15 @@ def show():
                 for v in opciones_ventas
             }
             
+            # Extraemos el selectbox FUERA del form para que Streamlit detecte los cambios "en vivo" y auto-rellene
+            venta_sel_id = st.selectbox("Selecciona la Venta a la que le falta el costo:", options=list(opc_formateadas.keys()), format_func=lambda x: opc_formateadas[x])
+            
+            # Buscar el costo actual real y nombre de esta venta en el dataframe
+            venta_dict = next((v for v in opciones_ventas if v['ID_Venta'] == venta_sel_id), None)
+            sug_costo = float(venta_dict['Costo_Producto']) if venta_dict else 0.0
+            sug_nombre = venta_dict['Producto'] if venta_dict else ""
+            
             with st.form("form_corregir_costo"):
-                venta_sel_id = st.selectbox("Selecciona la Venta a la que le falta el costo:", options=list(opc_formateadas.keys()), format_func=lambda x: opc_formateadas[x])
-                
-                # Buscar el costo actual real y nombre de esta venta en el dataframe
-                venta_dict = next((v for v in opciones_ventas if v['ID_Venta'] == venta_sel_id), None)
-                sug_costo = float(venta_dict['Costo_Producto']) if venta_dict else 0.0
-                sug_nombre = venta_dict['Producto'] if venta_dict else ""
-                
                 nuevo_nombre = st.text_input("📝 Renombrar Producto (Si la vendedora lo escribió con faltas de ortografía o mezclado, arréglalo aquí)", value=sug_nombre)
                 nuevo_costo = st.number_input("💰 Costo de Compra al Proveedor (¿Cuánto le costó a la empresa surtir esta botella originalmente?)", min_value=0.0, step=10.0, value=sug_costo)
                 
