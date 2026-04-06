@@ -210,23 +210,28 @@ def show():
             with st.form("form_corregir_costo"):
                 venta_sel_id = st.selectbox("Selecciona la Venta a la que le falta el costo:", options=list(opc_formateadas.keys()), format_func=lambda x: opc_formateadas[x])
                 
-                # Buscar el costo actual real de esta venta en el dataframe
+                # Buscar el costo actual real y nombre de esta venta en el dataframe
                 venta_dict = next((v for v in opciones_ventas if v['ID_Venta'] == venta_sel_id), None)
                 sug_costo = float(venta_dict['Costo_Producto']) if venta_dict else 0.0
+                sug_nombre = venta_dict['Producto'] if venta_dict else ""
                 
+                nuevo_nombre = st.text_input("📝 Renombrar Producto (Si la vendedora lo escribió con faltas de ortografía o mezclado, arréglalo aquí)", value=sug_nombre)
                 nuevo_costo = st.number_input("💰 Costo de Compra al Proveedor (¿Cuánto le costó a la empresa surtir esta botella originalmente?)", min_value=0.0, step=10.0, value=sug_costo)
                 
                 btn_corregir = st.form_submit_button("Guardar Corrección Cíclica")
                 
                 if btn_corregir:
-                    from database import DatabaseHandler
-                    d_b = DatabaseHandler()
-                    status, msj = d_b.corregir_costo_venta(int(venta_sel_id), float(nuevo_costo))
-                    if status:
-                        st.success(f"¡Éxito! {msj}")
-                        st.rerun()
+                    if not nuevo_nombre:
+                        st.error("El nombre del producto no puede estar vacío.")
                     else:
-                        st.error(msj)
+                        from database import DatabaseHandler
+                        d_b = DatabaseHandler()
+                        status, msj = d_b.corregir_costo_y_nombre_venta(int(venta_sel_id), float(nuevo_costo), nuevo_nombre)
+                        if status:
+                            st.success(f"¡Éxito! {msj}")
+                            st.rerun()
+                        else:
+                            st.error(msj)
         else:
             st.info("No hay ventas registradas aún.")
 
