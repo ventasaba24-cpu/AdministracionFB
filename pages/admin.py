@@ -139,18 +139,56 @@ def show():
                         color_margen = "#10b981" # Verde (Óptimo, más del 10%)
                         emoji_margen = "🟢"
 
+                    uds = int(r['Unidades_Vendidas'])
+                    uds_div = uds if uds > 0 else 1
+                    v_unit = r['Bruto_Ingresado'] / uds_div
+                    c_unit = r['Inversion_Total'] / uds_div
+                    com_unit = r['Comisiones_Pagadas'] / uds_div
+                    iva_unit = r['IVA_Retenido'] / uds_div
+                    net_unit = r['Utilidad_Real_Meta'] / uds_div
+
                     st.markdown(f"""
                     <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid {color_margen}; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
                             <div style="font-size: 15px; font-weight: bold; color: #1e293b;">🧪 {r['Producto']}</div>
                             <div style="font-size: 11px; font-weight: 800; color: {color_margen}; background-color: {color_margen}15; padding: 3px 8px; border-radius: 12px;">{emoji_margen} {margen:.1f}% Margen</div>
                         </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
-                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Ingreso Bruto ({r['Unidades_Vendidas']} uds)</span><br><span style="font-size: 14px; font-weight: 800; color: #0f172a;">${r['Bruto_Ingresado']:,.2f}</span></div>
-                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Ganancia Real Neta</span><br><span style="font-size: 14px; font-weight: 800; color: {color_margen};">${r['Utilidad_Real_Meta']:,.2f}</span></div>
-                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Costo Proveedor</span><br><span style="font-size: 13px; font-weight: 800; color: #475569;">${r['Inversion_Total']:,.2f}</span></div>
-                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Comisiones Listas</span><br><span style="font-size: 13px; font-weight: 800; color: #475569;">${r['Comisiones_Pagadas']:,.2f}</span></div>
-                            <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">IVA Reservado (16%)</span><br><span style="font-size: 13px; font-weight: 800; color: #475569;">${r['IVA_Retenido']:,.2f}</span></div>
+                        <div style="font-size: 13px; color: #334155; margin-top: 12px;">
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 6px;">
+                                <div style="flex: 2;"><b>Métrica Financiera</b></div>
+                                <div style="flex: 1; text-align: right; color: #64748b;"><b>Unitario</b></div>
+                                <div style="flex: 1; text-align: right; color: #1e293b;"><b>Global ({uds} uds)</b></div>
+                            </div>
+                            
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #0f172a; font-weight: 500;">
+                                <div style="flex: 2;">📈 Ingreso Bruto Venta</div>
+                                <div style="flex: 1; text-align: right;">${v_unit:,.2f}</div>
+                                <div style="flex: 1; text-align: right; font-weight: 700;">${r['Bruto_Ingresado']:,.2f}</div>
+                            </div>
+
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
+                                <div style="flex: 2;">🛒 Costo Compra (Prov)</div>
+                                <div style="flex: 1; text-align: right;">${c_unit:,.2f}</div>
+                                <div style="flex: 1; text-align: right; font-weight: 600;">${r['Inversion_Total']:,.2f}</div>
+                            </div>
+                            
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
+                                <div style="flex: 2;">🤝 Comisiones Repartidas</div>
+                                <div style="flex: 1; text-align: right;">${com_unit:,.2f}</div>
+                                <div style="flex: 1; text-align: right; font-weight: 600;">${r['Comisiones_Pagadas']:,.2f}</div>
+                            </div>
+                            
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
+                                <div style="flex: 2;">🏛️ IVA Reservado (16%)</div>
+                                <div style="flex: 1; text-align: right;">${iva_unit:,.2f}</div>
+                                <div style="flex: 1; text-align: right; font-weight: 600;">${r['IVA_Retenido']:,.2f}</div>
+                            </div>
+                            
+                            <div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #cbd5e1; color: {color_margen};">
+                                <div style="flex: 2; font-weight: bold;">💵 Ganancia Real Neta</div>
+                                <div style="flex: 1; text-align: right;">${net_unit:,.2f}</div>
+                                <div style="flex: 1; text-align: right; font-weight: 800;">${r['Utilidad_Real_Meta']:,.2f}</div>
+                            </div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
