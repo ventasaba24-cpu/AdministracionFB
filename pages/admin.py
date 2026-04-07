@@ -322,13 +322,15 @@ def show():
             
             # Formatear el Dataframe para el Data Editor (Agregando Costo Compra y Proveedor por ser Admin)
             if not df_inventario.empty:
-                columnas = ["nombre", "precio"]
+                columnas = ["nombre"]
+                if "lote" in df_inventario.columns: columnas.append("lote")
+                columnas.append("precio")
                 if "costo_compra" in df_inventario.columns: columnas.append("costo_compra")
                 if "proveedor" in df_inventario.columns: columnas.append("proveedor")
                 columnas.append("stock")
                 df_editor = df_inventario[columnas].copy()
             else:
-                df_editor = pd.DataFrame(columns=["nombre", "precio", "costo_compra", "proveedor", "stock"])
+                df_editor = pd.DataFrame(columns=["nombre", "lote", "precio", "costo_compra", "proveedor", "stock"])
                 
             edited_df = st.data_editor(
                 df_editor, 
@@ -336,6 +338,7 @@ def show():
                 width="stretch",
                 column_config={
                     "nombre": st.column_config.TextColumn("Nombre del Producto", required=True),
+                    "lote": st.column_config.TextColumn("Lote ID", required=False, default="Lote 1"),
                     "precio": st.column_config.NumberColumn("Precio Final ($)", min_value=0.0, format="%.2f", required=False),
                     "costo_compra": st.column_config.NumberColumn("Costo Compra ($)", min_value=0.0, format="%.2f", required=False),
                     "proveedor": st.column_config.TextColumn("Proveedor", required=False),
