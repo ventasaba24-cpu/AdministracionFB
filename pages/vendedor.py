@@ -78,10 +78,13 @@ def show():
             for _, row in df_inventario.iterrows():
                 if int(row['stock']) > 0:
                     nombre = row['nombre']
-                    opciones_inventario.append(nombre)
-                    precio_dict[nombre] = float(row['precio'])
-                    stock_dict[nombre] = int(row['stock'])
-                    
+                    if nombre not in opciones_inventario:
+                        opciones_inventario.append(nombre)
+                        precio_dict[nombre] = float(row['precio'])
+                        stock_dict[nombre] = int(row['stock'])
+                    else:
+                        stock_dict[nombre] += int(row['stock'])
+                        
         opciones_inventario.append("➕ Otro (Capturar un producto fuera de lista...)")
         
         producto = st.selectbox("🛒 Producto a Vender", opciones_inventario)
