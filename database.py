@@ -41,8 +41,9 @@ class Producto(Base):
     precio = Column(Float, nullable=False)
     costo_compra = Column(Float, default=0.0) # Costo de inversión que solo ve el admin
     proveedor = Column(String(150), nullable=True) # Distribuidor/Proveedor que solo ve admin
+    lote = Column(String(50), default='Lote 1')
     
-    __table_args__ = (UniqueConstraint('nombre', 'vendedor_email', name='_nombre_vendedor_uc'),)
+    __table_args__ = (UniqueConstraint('nombre', 'lote', 'vendedor_email', name='_nombre_lote_vendedor_uc'),)
 
 class Venta(Base):
     __tablename__ = 'ventas'
@@ -225,8 +226,8 @@ class DatabaseHandler:
         try:
             # Respaldar los costos de compra y proveedores actuales (para no sobreescribirlos si es un vendedor quien guarda)
             old_products = session.query(Producto).filter_by(vendedor_email=vendedor_email).all()
-            costos_map = {p.nombre: p.costo_compra for p in old_products}
-            provs_map = {p.nombre: p.proveedor for p in old_products}
+            costos_map = {f"{p.nombre}-{p.lote}": p.costo_compra for p in old_products}
+            provs_map = {f"{p.nombre}-{p.lote}": p.proveedor for p in old_products}
             
             # Borramos el previo stock de este vendedor
             session.query(Producto).filter_by(vendedor_email=vendedor_email).delete(synchronize_session=False)
@@ -237,14 +238,20 @@ class DatabaseHandler:
                 if not nombre or pd.isna(row.get('nombre')):
                     continue
                     
+                lote = row.get('lote', 'Lote 1')
+                if pd.isna(lote) or not str(lote).strip():
+                    lote = 'Lote 1'
+                lote = str(lote).strip()
+                key_map = f"{nombre}-{lote}"
+                    
                 # Si el df trae "costo_compra" (Admin), úsalo. Si no (Vendedor), rescata el viejo (o 0.0).
                 costo_nuevo = row.get('costo_compra')
                 if pd.isna(costo_nuevo) or costo_nuevo is None:
-                    costo_nuevo = costos_map.get(nombre, 0.0)
+                    costo_nuevo = costos_map.get(key_map, 0.0)
                     
                 prov_nuevo = row.get('proveedor')
                 if pd.isna(prov_nuevo) or prov_nuevo is None:
-                    prov_nuevo = provs_map.get(nombre, "Desconocido")
+                    prov_nuevo = provs_map.get(key_map, "Desconocido")
                     
                 nuevo_prod = Producto(
                     nombre=nombre,
@@ -252,7 +259,8 @@ class DatabaseHandler:
                     stock=int(row.get('stock', 0)),
                     precio=float(row.get('precio', 0.0)),
                     costo_compra=float(costo_nuevo),
-                    proveedor=str(prov_nuevo)
+                    proveedor=str(prov_nuevo),
+                    lote=lote
                 )
                 session.add(nuevo_prod)
             session.commit()
@@ -266,12 +274,22 @@ class DatabaseHandler:
     def actualizar_stock(self, producto_nombre, cantidad_vendida, vendedor_email):
         session = self.get_session()
         try:
-            producto = session.query(Producto).filter_by(nombre=producto_nombre, vendedor_email=vendedor_email).first()
-            if producto:
-                producto.stock = max(0, producto.stock - cantidad_vendida)
-                session.commit()
-                return True
-            return False
+            productos_lotes = session.query(Producto).filter_by(nombre=producto_nombre, vendedor_email=vendedor_email).filter(Producto.stock > 0).order_by(Producto.id.asc()).all()
+            if not productos_lotes:
+                return False
+                
+            restante = cantidad_vendida
+            for p in productos_lotes:
+                if restante <= 0:
+                    break
+                if p.stock >= restante:
+                    p.stock -= restante
+                    restante = 0
+                else:
+                    restante -= p.stock
+                    p.stock = 0
+            session.commit()
+            return True
         finally:
             session.close()
 
@@ -282,12 +300,35 @@ class DatabaseHandler:
     def registrar_venta(self, vendedor_email, cliente, producto, cantidad, precio_unitario):
         session = self.get_session()
         try:
-            # Traer producto antes para capturar su costo actual
-            mi_producto = session.query(Producto).filter_by(nombre=producto, vendedor_email=vendedor_email).first()
-            costo_unitario_actual = mi_producto.costo_compra if mi_producto else 0.0
-            
             monto_total = float(cantidad) * float(precio_unitario)
-            costo_total = float(cantidad) * float(costo_unitario_actual)
+            
+            # FIFO Logic (First In, First Out) by Lote
+            productos_lotes = session.query(Producto).filter_by(nombre=producto, vendedor_email=vendedor_email).order_by(Producto.id.asc()).all()
+            
+            restante_a_descontar = cantidad
+            costo_total = 0.0
+            
+            if not productos_lotes:
+                costo_total = 0.0
+            else:
+                for mi_producto in productos_lotes:
+                    if restante_a_descontar <= 0:
+                        break
+                    
+                    if mi_producto.stock > 0:
+                        if mi_producto.stock >= restante_a_descontar:
+                            costo_total += float(restante_a_descontar) * mi_producto.costo_compra
+                            mi_producto.stock -= restante_a_descontar
+                            restante_a_descontar = 0
+                        else:
+                            costo_total += float(mi_producto.stock) * mi_producto.costo_compra
+                            restante_a_descontar -= mi_producto.stock
+                            mi_producto.stock = 0
+                            
+                # Si vendimos más unidades de las registradas en stock físico, cobramos el sobrante con el costo del lote más reciente
+                if restante_a_descontar > 0:
+                    last_cost = productos_lotes[-1].costo_compra
+                    costo_total += float(restante_a_descontar) * last_cost
             
             nueva_venta = Venta(
                 vendedor_email=vendedor_email,
@@ -295,14 +336,10 @@ class DatabaseHandler:
                 producto_nombre=producto,
                 cantidad=cantidad,
                 monto_total=monto_total,
-                costo_historico=costo_total, # Congelado para la historia de utilidades
+                costo_historico=costo_total, # Congelado para la historia de utilidades de los lotes exactos
                 fecha_venta=datetime.datetime.now()
             )
             session.add(nueva_venta)
-            
-            # Auto - Actualizar Stock
-            if mi_producto:
-                mi_producto.stock = max(0, mi_producto.stock - cantidad)
                 
             session.commit()
             return True, nueva_venta.id, monto_total
