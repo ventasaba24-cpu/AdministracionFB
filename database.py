@@ -485,10 +485,34 @@ class DatabaseHandler:
                  comision_ganada = v.monto_total * tasa
                  comision_pagada = "SI" if estado == "Pagado" else "NO"
                  
+                 # RASTREADOR MLM O(1) (Penalización oculta de 5%, 3%, 2%)
+                 comision_red = 0.0
+                 niveles_red_activos = 0
+                 
+                 if vendedor:
+                     p1 = vendedor.patrocinador_email
+                     if p1 and p1 != "Admin" and p1 != v.vendedor_email:
+                         comision_red += v.monto_total * 0.05
+                         niveles_red_activos += 1
+                         user_p1 = user_dict.get(p1)
+                         
+                         if user_p1:
+                             p2 = user_p1.patrocinador_email
+                             if p2 and p2 != "Admin" and p2 != p1:
+                                 comision_red += v.monto_total * 0.03
+                                 niveles_red_activos += 1
+                                 user_p2 = user_dict.get(p2)
+                                 
+                                 if user_p2:
+                                     p3 = user_p2.patrocinador_email
+                                     if p3 and p3 != "Admin" and p3 != p2:
+                                         comision_red += v.monto_total * 0.02
+                                         niveles_red_activos += 1
+                 
                  # === METRICAS FINANCIERAS NETAS ===
                  iva_generado = v.monto_total * 0.16
                  costo_bases = getattr(v, "costo_historico", 0.0) # Asegurando compatibilidad con DBs previas
-                 utilidad_neta = v.monto_total - iva_generado - costo_bases - comision_ganada
+                 utilidad_neta = v.monto_total - iva_generado - costo_bases - comision_ganada - comision_red
                  
                  fila = {
                      "ID_Venta": v.id,
@@ -507,6 +531,8 @@ class DatabaseHandler:
                      "Saldo_Pendiente": saldo,
                      "Estado_Venta": estado,
                      "Comision_Generada": comision_ganada,
+                     "Comision_Red": comision_red,
+                     "Niveles_Red": niveles_red_activos,
                      "Utilidad_Neta": utilidad_neta,
                      "Comision_Pagada": comision_pagada, # Concepto teórico de si ya superó el Adeudo
                      "Comision_Fisicamente_Cobrada": v.comision_cobrada,
