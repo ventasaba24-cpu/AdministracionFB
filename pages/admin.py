@@ -92,14 +92,20 @@ def show():
                 "Costo_Producto": "sum",
                 "IVA_(16%)": "sum",
                 "Comision_Generada": "sum",
-                "Utilidad_Neta": "sum"
+                "Utilidad_Neta": "sum",
+                "Niveles_Red": "max" # Ver el máximo nivel de patrocinadores que activó
             }).reset_index()
             
             for _, r in df_com.iterrows():
                 costo_iva = r['Costo_Producto'] + r['IVA_(16%)']
+                niveles = int(r["Niveles_Red"])
+                tag_red = f'<span style="background-color: #e0e7ff; color: #4338ca; font-size: 11px; padding: 2px 6px; border-radius: 10px; margin-left: 8px;">🧬 Niveles Arriba: {niveles}</span>' if niveles > 0 else ""
+                
                 st.markdown(f"""
                 <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #3b82f6; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                    <div style="font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">👤 {r['Nombre_Vendedor']}</div>
+                    <div style="font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 8px; display: flex; align-items: center;">
+                        👤 {r['Nombre_Vendedor']} {tag_red}
+                    </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                         <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Ventas Totales</span><br><span style="font-size: 15px; font-weight: 800; color: #0f172a;">${r['Total_Venta']:,.2f}</span></div>
                         <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Utilidad Neta</span><br><span style="font-size: 15px; font-weight: 800; color: #10b981;">${r['Utilidad_Neta']:,.2f}</span></div>
@@ -118,10 +124,11 @@ def show():
                     "Costo_Producto": "sum",
                     "IVA_(16%)": "sum",
                     "Comision_Generada": "sum",
+                    "Comision_Red": "sum",
                     "Utilidad_Neta": "sum"
                 })
                 # Aplanar los niveles del DataFrame generados por count/sum
-                df_perfumes.columns = ["Unidades_Vendidas", "Bruto_Ingresado", "Inversion_Total", "IVA_Retenido", "Comisiones_Pagadas", "Utilidad_Real_Meta"]
+                df_perfumes.columns = ["Unidades_Vendidas", "Bruto_Ingresado", "Inversion_Total", "IVA_Retenido", "Comisiones_Pagadas", "Comisiones_Red_Pagadas", "Utilidad_Real_Meta"]
                 df_perfumes = df_perfumes.reset_index().sort_values(by="Utilidad_Real_Meta", ascending=False)
                 
                 for _, r in df_perfumes.iterrows():
@@ -144,6 +151,7 @@ def show():
                     v_unit = r['Bruto_Ingresado'] / uds_div
                     c_unit = r['Inversion_Total'] / uds_div
                     com_unit = r['Comisiones_Pagadas'] / uds_div
+                    com_red_unit = r['Comisiones_Red_Pagadas'] / uds_div
                     iva_unit = r['IVA_Retenido'] / uds_div
                     net_unit = r['Utilidad_Real_Meta'] / uds_div
                     
@@ -151,7 +159,7 @@ def show():
                     # Calcular precio ideal (10% ganancia real bruta absorbida) solo si el margen es menor a 10 y hay costo
                     if margen < 10.0 and c_unit > 0:
                         tasa_iva = 0.16
-                        tasa_comision = com_unit / v_unit if v_unit > 0 else 0.10
+                        tasa_comision = (com_unit + com_red_unit) / v_unit if v_unit > 0 else 0.10
                         margen_objetivo = 0.10
                         factor_divisor = 1.0 - tasa_comision - tasa_iva - margen_objetivo
                         if factor_divisor > 0:
@@ -181,9 +189,14 @@ def show():
                                 <div style="flex: 1; text-align: right; font-weight: 600;">${r['Inversion_Total']:,.2f}</div>
                             </div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
-                                <div style="flex: 2;">🤝 Comisiones Repartidas</div>
+                                <div style="flex: 2;">🤝 Comis. Repartidas (Directas)</div>
                                 <div style="flex: 1; text-align: right;">${com_unit:,.2f}</div>
                                 <div style="flex: 1; text-align: right; font-weight: 600;">${r['Comisiones_Pagadas']:,.2f}</div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
+                                <div style="flex: 2;">🧬 Comis. Red (Derramadas)</div>
+                                <div style="flex: 1; text-align: right;">${com_red_unit:,.2f}</div>
+                                <div style="flex: 1; text-align: right; font-weight: 600;">${r['Comisiones_Red_Pagadas']:,.2f}</div>
                             </div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
                                 <div style="flex: 2;">🏛️ IVA Reservado (16%)</div>
