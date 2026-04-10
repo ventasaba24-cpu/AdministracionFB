@@ -271,6 +271,53 @@ class DatabaseHandler:
         finally:
             session.close()
 
+    def upsert_producto(self, vendedor_email, datos, producto_id=None):
+        session = self.get_session()
+        try:
+            if producto_id:
+                prod = session.query(Producto).filter_by(id=producto_id, vendedor_email=vendedor_email).first()
+                if not prod:
+                    return False, "Producto no encontrado."
+                prod.nombre = str(datos["nombre"]).strip()
+                prod.lote = str(datos.get("lote", "Lote 1")).strip()
+                prod.precio = float(datos.get("precio", 0.0))
+                prod.costo_compra = float(datos.get("costo_compra", 0.0))
+                prod.proveedor = str(datos.get("proveedor", "Generico")).strip()
+                prod.stock = int(datos.get("stock", 0))
+            else:
+                prod = Producto(
+                    nombre=str(datos["nombre"]).strip(),
+                    vendedor_email=vendedor_email,
+                    lote=str(datos.get("lote", "Lote 1")).strip(),
+                    precio=float(datos.get("precio", 0.0)),
+                    costo_compra=float(datos.get("costo_compra", 0.0)),
+                    proveedor=str(datos.get("proveedor", "Generico")).strip(),
+                    stock=int(datos.get("stock", 0))
+                )
+                session.add(prod)
+            session.commit()
+            return True, "Producto guardado satisfactoriamente."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error: {e}"
+        finally:
+            session.close()
+
+    def eliminar_inventario_producto(self, producto_id, vendedor_email):
+        session = self.get_session()
+        try:
+            prod = session.query(Producto).filter_by(id=producto_id, vendedor_email=vendedor_email).first()
+            if prod:
+                session.delete(prod)
+                session.commit()
+                return True, "Producto eliminado."
+            return False, "Producto no encontrado."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error al eliminar: {e}"
+        finally:
+            session.close()
+
     def actualizar_stock(self, producto_nombre, cantidad_vendida, vendedor_email):
         session = self.get_session()
         try:
