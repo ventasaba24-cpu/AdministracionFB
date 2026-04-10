@@ -51,7 +51,7 @@ def mostrar_detalles_popup(row):
     st.markdown("---")
     st.markdown(f"**Adeudo Actual Pendiente:** :red[${float(row['Saldo_Pendiente']):,.2f}]")
     
-    if st.button("Cerrar Pop-up", use_container_width=True):
+    if st.button("Cerrar Pop-up", width="stretch"):
         st.rerun()
 
 # Función principal a llamar desde app.py
@@ -173,7 +173,7 @@ def show():
                     # Usamos un expander para esconder y mostrar la confirmación (hace el efecto de un botón que pide confirmación)
                     with st.expander(f"📥 Retirar Comisión de {row['Cliente']}"):
                         st.warning(f"¿Estás seguro de registrar y marcar como retirados estos **${row['Comision_Generada']:,.2f}**?")
-                        if st.button("✅ Sí, Confirmar Retiro", key=f"btn_cobrar_{row['ID_Venta']}", use_container_width=True):
+                        if st.button("✅ Sí, Confirmar Retiro", key=f"btn_cobrar_{row['ID_Venta']}", width="stretch"):
                             exito_cobro, msj_cobro = db.marcar_comision_cobrada(row['ID_Venta'])
                             if exito_cobro:
                                 st.success("Comisión retirada exitosamente.")
