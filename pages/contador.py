@@ -98,4 +98,4 @@ def show():
         if col in df_export.columns:
             df_export[col] = df_export[col].map("${:,.2f}".format)
         
-    st.dataframe(df_export, use_container_width=True, height=500)
+    st.dataframe(df_export, width="stretch", height=500)
