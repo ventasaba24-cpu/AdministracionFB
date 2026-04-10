@@ -2,10 +2,24 @@ import streamlit as st
 import pandas as pd
 
 @st.dialog("Edición Completa de Venta")
-def dialog_editar_venta(venta_info, df_inventario, db):
+def dialog_editar_venta(venta_info, df_inventario, db, clientes_existentes=None):
     st.markdown("⚠️ **Cambiarás los detalles de esta venta. El inventario se ajustará automáticamente.**")
     
-    nuevo_cliente = st.text_input("Nombre de Cliente", value=venta_info['Cliente'])
+    if clientes_existentes is None:
+        clientes_existentes = []
+    
+    cliente_actual = venta_info['Cliente']
+    lista_clientes = ["✍️ Escribir nombre nuevo"] + sorted([c for c in clientes_existentes if str(c).strip() != ""])
+    if cliente_actual and cliente_actual not in lista_clientes:
+        lista_clientes.insert(1, cliente_actual)
+        
+    idx_cliente = lista_clientes.index(cliente_actual) if cliente_actual in lista_clientes else 0
+    sel_cliente = st.selectbox("Cliente Existente", options=lista_clientes, index=idx_cliente)
+    
+    if sel_cliente == "✍️ Escribir nombre nuevo":
+        nuevo_cliente = st.text_input("Ingresa el Nombre del Cliente Nuevo", value="")
+    else:
+        nuevo_cliente = sel_cliente
     nuevo_monto = st.number_input("Precio Cobrado ($)", min_value=0.0, value=float(venta_info['Total_Venta']), step=50.0)
     
     # Preparar opciones de productos
@@ -617,7 +631,8 @@ def show():
                         with cc1:
                             if st.button("✏️ Editar Completo", key=f"edit_v_{row['ID_Venta']}", width="stretch"):
                                 df_inventario = db.leer_inventario(vendedor_email=row['Vendedor_Email'])
-                                dialog_editar_venta(row, df_inventario, db)
+                                clientes_unicos = df_todas['Cliente'].dropna().unique().tolist() if not df_todas.empty else []
+                                dialog_editar_venta(row, df_inventario, db, clientes_unicos)
                         with cc2:
                             if st.button("🗑️ Eliminar y Devolver", key=f"del_v_{row['ID_Venta']}", type="primary", width="stretch"):
                                 exito, msj = db.eliminar_venta(row['ID_Venta'])
