@@ -132,11 +132,61 @@ def show():
             col4.metric("Costos y Comisiones", f"${costo_total + comisiones_totales:,.2f}")
             
             st.markdown("---")
-            c1, c2 = st.columns(2)
-            c1.info(f"🏆 **Producto Estrella en Ventas:** {producto_top}")
-            c2.success(f"🥇 **Mejor Vendedor(a):** {vendedor_top}")
             
-            st.markdown("---")
+            # --- SECCION: SALUD DE COBRANZA ---
+            st.markdown("<h4 style='color: #475569;'>📊 Salud Financiera y Cobranza</h4>", unsafe_allow_html=True)
+            abonos_totales = df_todas["Total_Abono"].sum()
+            deuda_calle = df_todas["Saldo_Pendiente"].sum()
+            tasa_cobranza = (abonos_totales / ventas_totales * 100) if ventas_totales > 0 else 0
+            
+            cal1, cal2, cal3 = st.columns(3)
+            cal1.metric("💰 Dinero en Banco (Efectivamente Cobrado)", f"${abonos_totales:,.2f}")
+            cal2.metric("💳 Dinero en la Calle (Por Cobrar)", f"${deuda_calle:,.2f}")
+            cal3.metric("🎯 Tasa de Cobranza Global", f"{tasa_cobranza:.1f}%", f"{tasa_cobranza-100:.1f}% vs 100% Ideal")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # --- SECCION: TOP 3 PRODUCTOS ---
+            st.markdown("<h4 style='color: #475569;'>🏆 Top 3 Productos Estrella (Por Rentabilidad Pura)</h4>", unsafe_allow_html=True)
+            
+            df_prod_kpi = df_todas.groupby("Producto").agg({
+                "Total_Venta": "sum",
+                "Utilidad_Neta": "sum",
+                "Cantidad": "sum"
+            }).reset_index()
+            
+            df_prod_kpi["Rentabilidad_%"] = (df_prod_kpi["Utilidad_Neta"] / df_prod_kpi["Total_Venta"] * 100).fillna(0)
+            top_3_prod = df_prod_kpi.sort_values(by="Utilidad_Neta", ascending=False).head(3)
+            
+            cols_p = st.columns(3)
+            medallas = ["🥇", "🥈", "🥉"]
+            for idx, r_prod in enumerate(top_3_prod.to_dict('records')):
+                with cols_p[idx]:
+                    st.info(f"""
+                    <div style='font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 5px;'>{medallas[idx]} {r_prod['Producto']}</div>
+                    <div style='font-size: 13px;'><b>Utilidad Libre:</b> ${r_prod['Utilidad_Neta']:,.2f}</div>
+                    <div style='font-size: 13px;'><b>Rentabilidad Mín:</b> {r_prod['Rentabilidad_%']:.1f}%</div>
+                    <div style='font-size: 13px;'><b>Vendido (Bruto):</b> ${r_prod['Total_Venta']:,.2f}</div>
+                    """)
+                    
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # --- SECCION: TOP 3 VENDEDORES ---
+            st.markdown("<h4 style='color: #475569;'>🔥 Top 3 Mejores Vendedores (Por Volumen de Ganancia)</h4>", unsafe_allow_html=True)
+            df_vend_kpi = df_todas.groupby("Nombre_Vendedor").agg({
+                "Total_Venta": "sum",
+                "Utilidad_Neta": "sum"
+            }).reset_index().sort_values(by="Utilidad_Neta", ascending=False).head(3)
+            
+            cols_v = st.columns(3)
+            for idx, r_vend in enumerate(df_vend_kpi.to_dict('records')):
+                with cols_v[idx]:
+                    st.success(f"""
+                    <div style='font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 5px;'>{medallas[idx]} {r_vend['Nombre_Vendedor']}</div>
+                    <div style='font-size: 13px;'><b>Utilidad Aportada:</b> ${r_vend['Utilidad_Neta']:,.2f}</div>
+                    <div style='font-size: 13px;'><b>Venta Bruta (Volumen):</b> ${r_vend['Total_Venta']:,.2f}</div>
+                    """)
+            
             st.markdown("---")
             st.subheader("Desglose Financiero y Comisiones por Vendedor")
             df_com = df_todas.groupby("Nombre_Vendedor").agg({
