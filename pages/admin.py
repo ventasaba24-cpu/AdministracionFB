@@ -18,7 +18,7 @@ def dialog_editar_venta(venta_info, df_inventario, db):
     
     nueva_cantidad = st.number_input("Cantidad de Piezas", min_value=1, value=int(venta_info.get('cantidad', 1)), step=1)
     
-    if st.button("💾 Guardar Corrección", type="primary", use_container_width=True):
+    if st.button("💾 Guardar Corrección", type="primary", width="stretch"):
         exito, msj = db.editar_venta_completa(venta_info['ID_Venta'], nuevo_cliente, nuevo_producto, nueva_cantidad, nuevo_monto)
         if exito:
             st.success(msj)
@@ -34,7 +34,7 @@ def dialog_editar_abono(abono_info, db):
     idx_m = metodos.index(abono_info['metodo_pago']) if abono_info['metodo_pago'] in metodos else 0
     nuevo_metodo = st.selectbox("Método de Pago", options=metodos, index=idx_m)
     
-    if st.button("💾 Actualizar Recibo", type="primary", use_container_width=True):
+    if st.button("💾 Actualizar Recibo", type="primary", width="stretch"):
         exito, msj = db.editar_abono(abono_info['id_abono'], nuevo_monto, nuevo_metodo)
         if exito:
             st.success(msj)
@@ -54,7 +54,7 @@ def dialog_gestion_inventario(db, vendedor_email, prod=None):
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("💾 Guardar", type="primary", use_container_width=True):
+        if st.button("💾 Guardar", type="primary", width="stretch"):
             if not nombre:
                 st.error("El nombre es requerido.")
             else:
@@ -70,7 +70,7 @@ def dialog_gestion_inventario(db, vendedor_email, prod=None):
                     st.error(msj)
     with col2:
         if prod is not None:
-            if st.button("🗑️ Eliminar Producto", type="secondary", use_container_width=True):
+            if st.button("🗑️ Eliminar Producto", type="secondary", width="stretch"):
                 exito, msj = db.eliminar_inventario_producto(prod['id'], vendedor_email)
                 if exito:
                     st.success("Borrado.")
@@ -377,7 +377,7 @@ def show():
             df_inventario = db.leer_inventario(vendedor_email=vendedor_sel_email)
             
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("➕ Añadir Nuevo Producto", type="primary", use_container_width=True):
+            if st.button("➕ Añadir Nuevo Producto", type="primary", width="stretch"):
                 dialog_gestion_inventario(db, vendedor_sel_email, None)
                 
             st.markdown("---")
@@ -395,7 +395,7 @@ def show():
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-                    if st.button(f"✏️ Editar {row['nombre']} ({row.get('lote', 'L-1')})", key=f"edit_prod_{row['id']}", use_container_width=True):
+                    if st.button(f"✏️ Editar {row['nombre']} ({row.get('lote', 'L-1')})", key=f"edit_prod_{row['id']}", width="stretch"):
                         dialog_gestion_inventario(db, vendedor_sel_email, row.to_dict())
             else:
                 st.info(f"{opciones_vnd[vendedor_sel_email]} aún no tiene productos asignados.")
@@ -596,11 +596,11 @@ def show():
                         
                         cc1, cc2 = st.columns(2)
                         with cc1:
-                            if st.button("✏️ Editar Completo", key=f"edit_v_{row['ID_Venta']}", use_container_width=True):
+                            if st.button("✏️ Editar Completo", key=f"edit_v_{row['ID_Venta']}", width="stretch"):
                                 df_inventario = db.leer_inventario(vendedor_email=row['Vendedor_Email'])
                                 dialog_editar_venta(row, df_inventario, db)
                         with cc2:
-                            if st.button("🗑️ Eliminar y Devolver", key=f"del_v_{row['ID_Venta']}", type="primary", use_container_width=True):
+                            if st.button("🗑️ Eliminar y Devolver", key=f"del_v_{row['ID_Venta']}", type="primary", width="stretch"):
                                 exito, msj = db.eliminar_venta(row['ID_Venta'])
                                 if exito: 
                                     st.success(msj)
@@ -663,10 +663,10 @@ def show():
                         
                         cc1, cc2 = st.columns(2)
                         with cc1:
-                            if st.button("✏️ Modificar Abono", key=f"edit_a_{row['id_abono']}", use_container_width=True):
+                            if st.button("✏️ Modificar Abono", key=f"edit_a_{row['id_abono']}", width="stretch"):
                                 dialog_editar_abono(row, db)
                         with cc2:
-                            if st.button("🗑️ Eliminar Abono", key=f"del_a_{row['id_abono']}", type="primary", use_container_width=True):
+                            if st.button("🗑️ Eliminar Abono", key=f"del_a_{row['id_abono']}", type="primary", width="stretch"):
                                 exito, msj = db.eliminar_abono(row['id_abono'])
                                 if exito:
                                     st.success(msj)
