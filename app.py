@@ -34,6 +34,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Funciones de envoltura para llamar a las páginas
+def run_vendedor_page():
+    vendedor_page.show()
+
+def run_admin_page():
+    admin_page.show()
+
+def run_contador_page():
+    import pages.contador as contador_page
+    contador_page.show()
+
 def main():
     if not check_password():
         st.stop()  # Detener la ejecución si no está logueado
@@ -49,11 +60,6 @@ def main():
     
     if st.session_state.user_role == "Admin":
         st.sidebar.success("Modo Administrador Activo")
-        # En Streamlit clásico con carpeta pages/, no necesitamos un selector explícito
-        # si solo cargamos el contenido aquí, o podemos usar el selector como "radio"
-        # Para hacer un switch real sin depender del autoscan de Streamlit de la carpeta 'pages':
-        
-        # Opcion 1: usar selectbox nativo
         page_names_to_funcs = {
             "🏠 Dashboard Vendedor": run_vendedor_page,
             "📊 Panel de Administración": run_admin_page
@@ -62,6 +68,11 @@ def main():
         st.sidebar.info("Modo Vendedor Activo")
         page_names_to_funcs = {
             "🏠 Dashboard Vendedor": run_vendedor_page
+        }
+    elif st.session_state.user_role == "Contador":
+        st.sidebar.success("Modo Contable Activo")
+        page_names_to_funcs = {
+            "📊 Panel Contable": run_contador_page
         }
     else:
         st.error("Rol no reconocido.")
@@ -75,13 +86,6 @@ def main():
 
     # Ejecutar la página seleccionada
     page_names_to_funcs[demo_name]()
-
-# Funciones de envoltura para llamar a las páginas
-def run_vendedor_page():
-    vendedor_page.show()
-
-def run_admin_page():
-    admin_page.show()
 
 if __name__ == "__main__":
     main()
