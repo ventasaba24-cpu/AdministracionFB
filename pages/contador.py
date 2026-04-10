@@ -36,9 +36,9 @@ def show():
             fecha_fin = st.date_input("Fecha Fin", value=date.today())
             
         # Filtrado
-        # Asegurar que df_todas['Fecha'] es datetime
-        df_todas['Fecha'] = pd.to_datetime(df_todas['Fecha'])
-        mask = (df_todas['Fecha'] >= pd.to_datetime(fecha_inicio)) & (df_todas['Fecha'] <= pd.to_datetime(fecha_fin) + pd.Timedelta(days=1))
+        # Asegurar que df_todas['Fecha_Venta'] es datetime
+        df_todas['Fecha_Venta'] = pd.to_datetime(df_todas['Fecha_Venta'])
+        mask = (df_todas['Fecha_Venta'] >= pd.to_datetime(fecha_inicio)) & (df_todas['Fecha_Venta'] <= pd.to_datetime(fecha_fin) + pd.Timedelta(days=1))
         df_filtrado = df_todas.loc[mask].copy()
     else:
         df_filtrado = df_todas.copy()
@@ -85,7 +85,7 @@ def show():
     
     # Preparamos las columnas que sirven en contabilidad
     columnas_contables = [
-        "ID_Venta", "Fecha", "Cliente", "Producto", 
+        "ID_Venta", "Fecha_Venta", "Cliente", "Producto", 
         "Costo_Producto", "IVA_(16%)", "Total_Venta", "Comision_Generada", "Utilidad_Neta"
     ]
     # Filtrar solo columnas existentes (por si alguna falta)
