@@ -128,25 +128,34 @@ def show():
                 "Costo_Producto": "sum",
                 "IVA_(16%)": "sum",
                 "Comision_Generada": "sum",
+                "Comision_Red": "sum",
                 "Utilidad_Neta": "sum",
+                "Saldo_Pendiente": "sum",
                 "Niveles_Red": "max" # Ver el máximo nivel de patrocinadores que activó
             }).reset_index()
             
             for _, r in df_com.iterrows():
-                costo_iva = r['Costo_Producto'] + r['IVA_(16%)']
                 niveles = int(r["Niveles_Red"])
                 tag_red = f'<span style="background-color: #e0e7ff; color: #4338ca; font-size: 11px; padding: 2px 6px; border-radius: 10px; margin-left: 8px;">🧬 Niveles Arriba: {niveles}</span>' if niveles > 0 else ""
                 
                 st.markdown(f"""
                 <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #3b82f6; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                    <div style="font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 8px; display: flex; align-items: center;">
+                    <div style="font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 12px; display: flex; align-items: center;">
                         👤 {r['Nombre_Vendedor']} {tag_red}
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                         <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Ventas Totales</span><br><span style="font-size: 15px; font-weight: 800; color: #0f172a;">${r['Total_Venta']:,.2f}</span></div>
-                        <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Utilidad Neta</span><br><span style="font-size: 15px; font-weight: 800; color: #10b981;">${r['Utilidad_Neta']:,.2f}</span></div>
-                        <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Comisiones</span><br><span style="font-size: 15px; font-weight: 800; color: #f59e0b;">${r['Comision_Generada']:,.2f}</span></div>
-                        <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Costo + IVA</span><br><span style="font-size: 15px; font-weight: 800; color: #ef4444;">${costo_iva:,.2f}</span></div>
+                        <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Utilidad Neta (Pura)</span><br><span style="font-size: 15px; font-weight: 800; color: #10b981;">${r['Utilidad_Neta']:,.2f}</span></div>
+                        <div><span style="font-size: 12px; color: #dc2626; font-weight: 600;">Deuda en la Calle</span><br><span style="font-size: 15px; font-weight: 800; color: #991b1b;">${r['Saldo_Pendiente']:,.2f}</span></div>
+                        
+                        <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Costo Proveedor</span><br><span style="font-size: 15px; font-weight: 800; color: #ef4444;">${r['Costo_Producto']:,.2f}</span></div>
+                        <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">IVA Reservado (16%)</span><br><span style="font-size: 15px; font-weight: 800; color: #64748b;">${r['IVA_(16%)']:,.2f}</span></div>
+                        <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Comisiones (Directas)</span><br><span style="font-size: 15px; font-weight: 800; color: #f59e0b;">${r['Comision_Generada']:,.2f}</span></div>
+                        
+                        <div style="grid-column: span 3; border-top: 1px dashed #cbd5e1; padding-top: 8px;">
+                            <span style="font-size: 12px; color: #4338ca; font-weight: 600;">🧬 Regalías Generadas para la Red (Derramadas hacia Arriba): </span>
+                            <span style="font-size: 14px; font-weight: 800; color: #3730a3;">${r['Comision_Red']:,.2f}</span>
+                        </div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
