@@ -16,10 +16,12 @@ def dialog_editar_venta(venta_info, df_inventario, db):
     index_prod = opciones_prod.index(venta_info['Producto'])
     nuevo_producto = st.selectbox("Producto Entregado", options=opciones_prod, index=index_prod)
     
-    nueva_cantidad = st.number_input("Cantidad de Piezas", min_value=1, value=int(venta_info.get('cantidad', 1)), step=1)
+    nueva_cantidad = st.number_input("Cantidad de Piezas", min_value=1, value=int(venta_info.get('Cantidad', 1)), step=1)
+    
+    nuevo_costo = st.number_input("Costo Proveedor de la Venta ($)", min_value=0.0, value=float(venta_info.get('Costo_Producto', 0.0)), step=50.0)
     
     if st.button("💾 Guardar Corrección", type="primary", width="stretch"):
-        exito, msj = db.editar_venta_completa(venta_info['ID_Venta'], nuevo_cliente, nuevo_producto, nueva_cantidad, nuevo_monto)
+        exito, msj = db.editar_venta_completa(venta_info['ID_Venta'], nuevo_cliente, nuevo_producto, nueva_cantidad, nuevo_monto, nuevo_costo)
         if exito:
             st.success(msj)
             st.rerun()
