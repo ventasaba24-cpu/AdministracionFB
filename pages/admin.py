@@ -162,12 +162,14 @@ def show():
             medallas = ["🥇", "🥈", "🥉"]
             for idx, r_prod in enumerate(top_3_prod.to_dict('records')):
                 with cols_p[idx]:
-                    st.info(f"""
-                    <div style='font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 5px;'>{medallas[idx]} {r_prod['Producto']}</div>
-                    <div style='font-size: 13px;'><b>Utilidad Libre:</b> ${r_prod['Utilidad_Neta']:,.2f}</div>
-                    <div style='font-size: 13px;'><b>Rentabilidad Mín:</b> {r_prod['Rentabilidad_%']:.1f}%</div>
-                    <div style='font-size: 13px;'><b>Vendido (Bruto):</b> ${r_prod['Total_Venta']:,.2f}</div>
-                    """)
+                    st.markdown(f"""
+                    <div style='background-color: #eff6ff; padding: 12px; border-radius: 8px; border-left: 5px solid #3b82f6;'>
+                        <div style='font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 5px;'>{medallas[idx]} {r_prod['Producto']}</div>
+                        <div style='font-size: 13px; color: #334155;'><b>Utilidad Libre:</b> ${r_prod['Utilidad_Neta']:,.2f}</div>
+                        <div style='font-size: 13px; color: #334155;'><b>Rentabilidad Mín:</b> {r_prod['Rentabilidad_%']:.1f}%</div>
+                        <div style='font-size: 13px; color: #334155;'><b>Vendido (Bruto):</b> ${r_prod['Total_Venta']:,.2f}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
                     
             st.markdown("<br>", unsafe_allow_html=True)
             
@@ -181,11 +183,13 @@ def show():
             cols_v = st.columns(3)
             for idx, r_vend in enumerate(df_vend_kpi.to_dict('records')):
                 with cols_v[idx]:
-                    st.success(f"""
-                    <div style='font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 5px;'>{medallas[idx]} {r_vend['Nombre_Vendedor']}</div>
-                    <div style='font-size: 13px;'><b>Utilidad Aportada:</b> ${r_vend['Utilidad_Neta']:,.2f}</div>
-                    <div style='font-size: 13px;'><b>Venta Bruta (Volumen):</b> ${r_vend['Total_Venta']:,.2f}</div>
-                    """)
+                    st.markdown(f"""
+                    <div style='background-color: #f0fdf4; padding: 12px; border-radius: 8px; border-left: 5px solid #22c55e;'>
+                        <div style='font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 5px;'>{medallas[idx]} {r_vend['Nombre_Vendedor']}</div>
+                        <div style='font-size: 13px; color: #334155;'><b>Utilidad Aportada:</b> ${r_vend['Utilidad_Neta']:,.2f}</div>
+                        <div style='font-size: 13px; color: #334155;'><b>Venta Bruta (Volumen):</b> ${r_vend['Total_Venta']:,.2f}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
             
             st.markdown("---")
             st.subheader("Desglose Financiero y Comisiones por Vendedor")
