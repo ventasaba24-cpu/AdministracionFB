@@ -568,29 +568,46 @@ def show():
         
         if tipo_correccion == "Ventas":
             if not df_todas.empty:
+                solo_ceros = st.checkbox("🚩 Filtrar únicamente Ventas Registradas en $0.00 de Costo Proveedor", value=False)
                 df_filtro = df_todas
                 
+                if solo_ceros:
+                    df_filtro = df_filtro[df_filtro['Costo_Producto'] <= 0]
+                
                 if termino:
-                    df_filtro = df_todas[
-                        df_todas["Cliente"].astype(str).str.lower().str.contains(termino) |
-                        df_todas["Nombre_Vendedor"].astype(str).str.lower().str.contains(termino) |
-                        df_todas["ID_Venta"].astype(str).str.lower().str.contains(termino) |
-                        df_todas["Producto"].astype(str).str.lower().str.contains(termino)
+                    df_filtro = df_filtro[
+                        df_filtro["Cliente"].astype(str).str.lower().str.contains(termino) |
+                        df_filtro["Nombre_Vendedor"].astype(str).str.lower().str.contains(termino) |
+                        df_filtro["ID_Venta"].astype(str).str.lower().str.contains(termino) |
+                        df_filtro["Producto"].astype(str).str.lower().str.contains(termino)
                     ]
                 
-                # Para evitar lag en mobile si hay 2000 ventas, mostramos máximo las 30 más recientes que coincidan
-                df_filtro = df_filtro.sort_values(by="ID_Venta", ascending=False).head(30)
+                # Si activó ver ceros o está buscando, mostramos todos los resultados. 
+                # Si no, por default mostramos los últimos 30 por optimización de memoria.
+                if solo_ceros or termino:
+                    df_filtro = df_filtro.sort_values(by="ID_Venta", ascending=False)
+                else:
+                    df_filtro = df_filtro.sort_values(by="ID_Venta", ascending=False).head(30)
                 
                 if not df_filtro.empty:
-                    st.markdown(f"*{f'Mostrando {len(df_filtro)} resultados' if termino else 'Mostrando las últimas 30 ventas registradas'}*")
+                    st.markdown(f"*{f'Mostrando {len(df_filtro)} resultados' if (termino or solo_ceros) else 'Mostrando las últimas 30 ventas registradas'}*")
                     for _, row in df_filtro.iterrows():
                         fecha_str = row.get('Fecha_Venta', '')
                         fecha_html = f"<span style='float:right; font-size:13px; font-weight:normal; color:#64748b;'>{fecha_str}</span>" if fecha_str else ""
                         
+                        costo_proveedor = row.get('Costo_Producto', 0.0)
+                        
+                        alerta_costo = ""
+                        if costo_proveedor <= 0:
+                            alerta_costo = f"<div style='color: #ef4444; font-size: 13px; font-weight: bold; margin-top: 5px; border-top: 1px solid #e2e8f0; padding-top: 5px;'>⚠️ Costo Prov: $0.00 (Requiere Asignar Costo)</div>"
+                        else:
+                            alerta_costo = f"<div style='color: #64748b; font-size: 13px; margin-top: 5px; border-top: 1px solid #e2e8f0; padding-top: 5px;'>🛒 Costo Prov: ${costo_proveedor:,.2f}</div>"
+
                         st.markdown(f'''
                         <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #3b82f6; margin-bottom: 10px;">
                             <div style="font-weight:bold; font-size:16px;">Venta #{row['ID_Venta']} - {row['Cliente']} {fecha_html}</div>
                             <div style="color: #475569; font-size: 14px; margin-bottom: 0px;">{row['Nombre_Vendedor']} vendió <b>{row.get('Cantidad', 1)}x {row['Producto']}</b> por <b>${row['Total_Venta']:,.2f}</b></div>
+                            {alerta_costo}
                         </div>
                         ''', unsafe_allow_html=True)
                         
