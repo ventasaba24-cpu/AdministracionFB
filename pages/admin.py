@@ -380,11 +380,12 @@ def show():
             if not df_deudores.empty:
                 opciones_ventas = {}
                 for idx, row in df_deudores.iterrows():
-                    desc = f"ID: {row['ID_Venta']} | Cliente: {row['Cliente']} | {row['Producto']} | Vend: {row['Nombre_Vendedor']} (Resta: ${row['Saldo_Pendiente']:,.2f})"
+                    # Acortar la descripción para que no se corte en el móvil
+                    desc = f"Venta #{row['ID_Venta']} - {row['Cliente']} (Debe: ${row['Saldo_Pendiente']:,.2f})"
                     opciones_ventas[row['ID_Venta']] = desc
                     
                 venta_buscada = st.selectbox(
-                    "Selecciona o busca la cuenta por cobrar",
+                    "📱 Selecciona o busca la cuenta por cobrar",
                     options=list(opciones_ventas.keys()),
                     format_func=lambda x: opciones_ventas[x]
                 )
@@ -393,13 +394,34 @@ def show():
                     venta = df_ventas[df_ventas["ID_Venta"] == venta_buscada]
                     info = venta.iloc[0]
                     
+                    # Mostrar la información completa de forma estructurada para el celular
+                    st.info(f"**👤 Vendedora:** {info['Nombre_Vendedor']}  \n**🧪 Producto:** {info['Producto']}  \n**💰 Total Ticket:** ${info['Total_Venta']:,.2f}  \n**💳 Saldo Restante:** **${info['Saldo_Pendiente']:,.2f}**")
+                    
+                    # Desplegar historial de abonos si existen
+                    abonos_historial = db.leer_abonos_por_venta(int(venta_buscada))
+                    if abonos_historial:
+                        st.markdown("**📜 Historial de Pagos Anteriores:**")
+                        for a in abonos_historial:
+                            f_str = a.fecha_abono.strftime("%d-%b-%Y") if a.fecha_abono else "Sin fecha"
+                            st.caption(f"🗓️ {f_str} • 💵 **+${a.monto_abono:,.2f}** ({a.metodo_pago})")
+                        st.markdown("<hr style='margin: 8px 0px;'>", unsafe_allow_html=True)
+                    
+                    import datetime
                     with st.form("abono_form"):
                         monto_abono = st.number_input("Monto Recibido", min_value=1.0, max_value=float(info['Saldo_Pendiente']), step=100.0)
-                        metodo_pago = st.selectbox("Método de Pago", ["Efectivo", "Transferencia", "Tarjeta"])
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            metodo_pago = st.selectbox("Método de Pago", ["Efectivo", "Transferencia", "Tarjeta"])
+                        with col2:
+                            fecha_pago = st.date_input("Fecha del Abono", datetime.datetime.now().date())
+                            
                         btn_abonar = st.form_submit_button("Confirmar Abono ($)")
                         
                         if btn_abonar:
-                            exito, msj = db.registrar_abono(int(venta_buscada), monto_abono, metodo_pago)
+                            # Ensamblamos la fecha ingresada con la hora actual
+                            fecha_dt = datetime.datetime.combine(fecha_pago, datetime.datetime.now().time())
+                            exito, msj = db.registrar_abono(int(venta_buscada), monto_abono, metodo_pago, fecha_dt)
                             if exito:
                                 st.success(f"Abono por ${monto_abono:,.2f} registrado exitosamente.")
                                 st.rerun()
