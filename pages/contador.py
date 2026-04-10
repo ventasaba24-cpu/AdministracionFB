@@ -16,7 +16,7 @@ def show():
     # Data completa de Ventas
     df_todas = db.obtener_tabla_ventas_completa()
     # Data completa de Abonos
-    df_abonos = db.obtener_abonos_global()
+    df_abonos = db.leer_abonos()
 
     if df_todas.empty:
         st.info("Aún no hay ventas registradas en el sistema comercial.")
