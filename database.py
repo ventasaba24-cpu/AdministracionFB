@@ -623,7 +623,7 @@ class DatabaseHandler:
         finally:
             session.close()
 
-    def editar_venta_completa(self, venta_id, nuevo_cliente, nuevo_producto, nueva_cantidad, nuevo_monto):
+    def editar_venta_completa(self, venta_id, nuevo_cliente, nuevo_producto, nueva_cantidad, nuevo_monto, nuevo_costo_proveedor):
         session = self.get_session()
         try:
             venta = session.query(Venta).filter_by(id=venta_id).first()
@@ -632,6 +632,7 @@ class DatabaseHandler:
                 
             cantidad_int = int(nueva_cantidad)
             monto_float = float(nuevo_monto)
+            costo_float = float(nuevo_costo_proveedor)
             
             # Si el producto o la cantidad cambió, ajustamos el stock matemáticamente
             if venta.producto_nombre != nuevo_producto or venta.cantidad != cantidad_int:
@@ -644,15 +645,12 @@ class DatabaseHandler:
                 prod_nuevo = session.query(Producto).filter_by(nombre=nuevo_producto, vendedor_email=venta.vendedor_email).first()
                 if prod_nuevo:
                     prod_nuevo.stock = max(0, prod_nuevo.stock - cantidad_int)
-                    # Actualizar costo_historico basado en costo_compra actual del nuevo producto
-                    venta.costo_historico = cantidad_int * float(prod_nuevo.costo_compra)
-                else:
-                    venta.costo_historico = 0.0 # No tiene inventario registrado
                     
             venta.cliente = nuevo_cliente
             venta.producto_nombre = nuevo_producto
             venta.cantidad = cantidad_int
             venta.monto_total = monto_float
+            venta.costo_historico = costo_float
             
             session.commit()
             return True, "Registro actualizado en sistema y control de inventario."
