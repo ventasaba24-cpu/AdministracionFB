@@ -139,7 +139,6 @@ def show():
                 tag_red = f'<span style="background-color: #e0e7ff; color: #4338ca; font-size: 11px; padding: 2px 6px; border-radius: 10px; margin-left: 8px;">🧬 Niveles Arriba: {niveles}</span>' if niveles > 0 else ""
                 
                 st.markdown(f"""
-                st.markdown(f"""
 <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #3b82f6; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
 <div style="font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 12px; display: flex; align-items: center;">
 👤 {r['Nombre_Vendedor']} {tag_red}
