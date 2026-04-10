@@ -31,6 +31,10 @@ st.markdown("""
     [data-testid="stMetricValue"] {
         font-size: 1.8rem;
     }
+    /* Ocultar el menú lateral automático de Streamlit (páginas) */
+    [data-testid="stSidebarNav"] {
+        display: none !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
