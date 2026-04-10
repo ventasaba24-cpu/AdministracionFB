@@ -390,8 +390,11 @@ class DatabaseHandler:
         finally:
             session.close()
 
-    def registrar_abono(self, venta_id, monto, metodo="Efectivo"):
+    def registrar_abono(self, venta_id, monto, metodo="Efectivo", fecha_abono=None):
         session = self.get_session()
+        if fecha_abono is None:
+            fecha_abono = datetime.datetime.now()
+        
         try:
             venta_existe = session.query(Venta).filter_by(id=venta_id).first()
             if not venta_existe:
@@ -400,7 +403,7 @@ class DatabaseHandler:
             nuevo_abono = Abono(
                 venta_id=venta_id,
                 monto_abono=monto,
-                fecha_abono=datetime.datetime.now(),
+                fecha_abono=fecha_abono,
                 metodo_pago=metodo
             )
             session.add(nuevo_abono)
@@ -409,6 +412,13 @@ class DatabaseHandler:
         except Exception as e:
             session.rollback()
             return False, str(e)
+        finally:
+            session.close()
+
+    def leer_abonos_por_venta(self, venta_id):
+        session = self.get_session()
+        try:
+            return session.query(Abono).filter_by(venta_id=venta_id).order_by(Abono.fecha_abono.asc()).all()
         finally:
             session.close()
 
