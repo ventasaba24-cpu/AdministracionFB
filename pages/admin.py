@@ -42,6 +42,42 @@ def dialog_editar_abono(abono_info, db):
         else:
             st.error(msj)
 
+@st.dialog("📦 Gestionar Producto")
+def dialog_gestion_inventario(db, vendedor_email, prod=None):
+    st.markdown("Agrega o edita los detalles del producto para este vendedor.")
+    nombre = st.text_input("Nombre del Producto", value=prod['nombre'] if prod is not None else "")
+    lote = st.text_input("Lote ID", value=prod['lote'] if prod is not None and 'lote' in prod else "Lote 1")
+    precio = st.number_input("Precio Final Público ($)", min_value=0.0, value=float(prod['precio']) if prod is not None else 0.0, step=50.0)
+    costo = st.number_input("Costo Compra Prov ($)", min_value=0.0, value=float(prod.get('costo_compra', 0.0)) if prod is not None else 0.0, step=50.0)
+    proveedor = st.text_input("Proveedor", value=prod.get('proveedor', 'Generico') if prod is not None else "Generico")
+    stock = st.number_input("Unidades Físicas (Stock)", min_value=0, value=int(prod['stock']) if prod is not None else 0, step=1)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("💾 Guardar", type="primary", use_container_width=True):
+            if not nombre:
+                st.error("El nombre es requerido.")
+            else:
+                datos = {
+                    "nombre": nombre, "lote": lote, "precio": precio, "costo_compra": costo, "proveedor": proveedor, "stock": stock
+                }
+                prod_id = prod['id'] if prod is not None else None
+                exito, msj = db.upsert_producto(vendedor_email, datos, prod_id)
+                if exito:
+                    st.success(msj)
+                    st.rerun()
+                else:
+                    st.error(msj)
+    with col2:
+        if prod is not None:
+            if st.button("🗑️ Eliminar Producto", type="secondary", use_container_width=True):
+                exito, msj = db.eliminar_inventario_producto(prod['id'], vendedor_email)
+                if exito:
+                    st.success("Borrado.")
+                    st.rerun()
+                else:
+                    st.error(msj)
+
 
 def show():
     # Esta página requerirá rol Admin
@@ -333,39 +369,29 @@ def show():
             # Cargar su inventario actual
             df_inventario = db.leer_inventario(vendedor_email=vendedor_sel_email)
             
-            # Formatear el Dataframe para el Data Editor (Agregando Costo Compra y Proveedor por ser Admin)
-            if not df_inventario.empty:
-                columnas = ["nombre"]
-                if "lote" in df_inventario.columns: columnas.append("lote")
-                columnas.append("precio")
-                if "costo_compra" in df_inventario.columns: columnas.append("costo_compra")
-                if "proveedor" in df_inventario.columns: columnas.append("proveedor")
-                columnas.append("stock")
-                df_editor = df_inventario[columnas].copy()
-            else:
-                df_editor = pd.DataFrame(columns=["nombre", "lote", "precio", "costo_compra", "proveedor", "stock"])
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("➕ Añadir Nuevo Producto", type="primary", use_container_width=True):
+                dialog_gestion_inventario(db, vendedor_sel_email, None)
                 
-            edited_df = st.data_editor(
-                df_editor, 
-                num_rows="dynamic", 
-                width="stretch",
-                column_config={
-                    "nombre": st.column_config.TextColumn("Nombre del Producto", required=True),
-                    "lote": st.column_config.TextColumn("Lote ID", required=False, default="Lote 1"),
-                    "precio": st.column_config.NumberColumn("Precio Final ($)", min_value=0.0, format="%.2f", required=False),
-                    "costo_compra": st.column_config.NumberColumn("Costo Compra ($)", min_value=0.0, format="%.2f", required=False),
-                    "proveedor": st.column_config.TextColumn("Proveedor", required=False),
-                    "stock": st.column_config.NumberColumn("Unidades Físicas", min_value=0, step=1, required=False)
-                }
-            )
-            
-            if st.button("💾 Guardar Inventario de " + opciones_vnd[vendedor_sel_email]):
-                 exito, msj = db.guardar_inventario(edited_df, vendedor_sel_email)
-                 if exito:
-                     st.success(f"¡Inventario de {opciones_vnd[vendedor_sel_email]} guardado y sincronizado!")
-                     st.rerun()
-                 else:
-                     st.error(msj)
+            st.markdown("---")
+            if not df_inventario.empty:
+                st.markdown(f"**Productos en catálogo de {opciones_vnd[vendedor_sel_email]} ({len(df_inventario)} items)**")
+                for _, row in df_inventario.iterrows():
+                    # Card UI para móviles
+                    st.markdown(f"""
+                    <div style="background-color: #f8fafc; padding: 12px; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                        <div style="font-size: 15px; font-weight: bold; color: #0f172a; margin-bottom: 4px;">{row['nombre']} <span style="font-size:12px; font-weight:normal; color:#475569; background:#e2e8f0; padding:2px 6px; border-radius:10px;">{row.get('lote', 'Lote 1')}</span></div>
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; color: #475569;">
+                            <div>📦 Stock: <b>{row['stock']}</b></div>
+                            <div>💰 Público: <b>${float(row['precio']):,.2f}</b></div>
+                            <div>🛒 Prov: <b>${float(row.get('costo_compra', 0)):,.2f}</b></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button(f"✏️ Editar {row['nombre']} ({row.get('lote', 'L-1')})", key=f"edit_prod_{row['id']}", use_container_width=True):
+                        dialog_gestion_inventario(db, vendedor_sel_email, row.to_dict())
+            else:
+                st.info(f"{opciones_vnd[vendedor_sel_email]} aún no tiene productos asignados.")
         else:
             st.warning("No hay vendedores registrados en el sistema.")
 
