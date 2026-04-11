@@ -139,10 +139,19 @@ def show():
             deuda_calle = df_todas["Saldo_Pendiente"].sum()
             tasa_cobranza = (abonos_totales / ventas_totales * 100) if ventas_totales > 0 else 0
             
-            cal1, cal2, cal3 = st.columns(3)
-            cal1.metric("💰 Dinero en Banco (Efectivamente Cobrado)", f"${abonos_totales:,.2f}")
-            cal2.metric("💳 Dinero en la Calle (Por Cobrar)", f"${deuda_calle:,.2f}")
-            cal3.metric("🎯 Tasa de Cobranza Global", f"{tasa_cobranza:.1f}%", f"{tasa_cobranza-100:.1f}% vs 100% Ideal")
+            # Dinero esperando en stock:
+            df_inv_global = db.leer_inventario()
+            valor_inventario = 0.0
+            if not df_inv_global.empty:
+                df_inv_global["stock"] = pd.to_numeric(df_inv_global["stock"], errors="coerce").fillna(0)
+                df_inv_global["precio_venta"] = pd.to_numeric(df_inv_global["precio_venta"], errors="coerce").fillna(0)
+                valor_inventario = (df_inv_global["stock"] * df_inv_global["precio_venta"]).sum()
+            
+            cal1, cal2, cal3, cal4 = st.columns(4)
+            cal1.metric("💰 Dinero en Banco (Cobrado)", f"${abonos_totales:,.2f}")
+            cal2.metric("💳 Deuda en la Calle", f"${deuda_calle:,.2f}")
+            cal3.metric("🎯 Tasa de Cobranza", f"{tasa_cobranza:.1f}%", f"{tasa_cobranza-100:.1f}% vs Ideal")
+            cal4.metric("📦 Retorno Estimado (Stock)", f"${valor_inventario:,.2f}", "Potencial si vendes todo", delta_color="off")
             
             st.markdown("<br>", unsafe_allow_html=True)
             
