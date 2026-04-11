@@ -144,8 +144,8 @@ def show():
             valor_inventario = 0.0
             if not df_inv_global.empty:
                 df_inv_global["stock"] = pd.to_numeric(df_inv_global["stock"], errors="coerce").fillna(0)
-                df_inv_global["precio_venta"] = pd.to_numeric(df_inv_global["precio_venta"], errors="coerce").fillna(0)
-                valor_inventario = (df_inv_global["stock"] * df_inv_global["precio_venta"]).sum()
+                df_inv_global["precio"] = pd.to_numeric(df_inv_global["precio"], errors="coerce").fillna(0)
+                valor_inventario = (df_inv_global["stock"] * df_inv_global["precio"]).sum()
             
             cal1, cal2, cal3, cal4 = st.columns(4)
             cal1.metric("💰 Dinero en Banco (Cobrado)", f"${abonos_totales:,.2f}")
