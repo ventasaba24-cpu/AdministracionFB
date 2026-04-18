@@ -490,19 +490,31 @@ def show():
             df_deudores = df_ventas[df_ventas["Estado_Venta"] == "Adeudo"]
             
             if not df_deudores.empty:
-                opciones_ventas = {}
-                for idx, row in df_deudores.iterrows():
-                    # Acortar la descripción para que no se corte en el móvil
-                    desc = f"Venta #{row['ID_Venta']} - {row['Cliente']} (Debe: ${row['Saldo_Pendiente']:,.2f})"
-                    opciones_ventas[row['ID_Venta']] = desc
-                    
-                venta_buscada = st.selectbox(
-                    "📱 Selecciona o busca la cuenta por cobrar",
-                    options=list(opciones_ventas.keys()),
-                    format_func=lambda x: opciones_ventas[x]
-                )
+                st.markdown("<br>", unsafe_allow_html=True)
+                busq_abono = st.text_input("🔍 Filtro Rápido (Opcional)", placeholder="Escribe el nombre del cliente o del producto para recortar la lista... (Ej: Juan, Yara)")
                 
-                if venta_buscada:
+                if busq_abono:
+                    t_abono = str(busq_abono).lower()
+                    df_deudores = df_deudores[
+                        df_deudores["Cliente"].astype(str).str.lower().str.contains(t_abono) |
+                        df_deudores["Producto"].astype(str).str.lower().str.contains(t_abono) |
+                        df_deudores["ID_Venta"].astype(str).str.lower().str.contains(t_abono)
+                    ]
+                
+                if df_deudores.empty:
+                    st.warning("No se encontraron cuentas por cobrar que coincidan con esa búsqueda.")
+                else:
+                    opciones_ventas = {}
+                    for idx, row in df_deudores.iterrows():
+                        # Mostrar el perfume también para hacerlo más distinguible
+                        desc = f"🆔 #{row['ID_Venta']} | {row['Cliente']} | {row['Producto']} | 💳 Debe: ${row['Saldo_Pendiente']:,.2f}"
+                        opciones_ventas[row['ID_Venta']] = desc
+                        
+                    venta_buscada = st.selectbox(
+                        "📱 Selecciona la cuenta por cobrar",
+                        options=list(opciones_ventas.keys()),
+                        format_func=lambda x: opciones_ventas[x]
+                    )
                     venta = df_ventas[df_ventas["ID_Venta"] == venta_buscada]
                     info = venta.iloc[0]
                     
