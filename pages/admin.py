@@ -519,7 +519,7 @@ def show():
                     info = venta.iloc[0]
                     
                     # Mostrar la información completa de forma estructurada para el celular
-                    st.info(f"**👤 Vendedora:** {info['Nombre_Vendedor']}  \n**🧪 Producto:** {info['Producto']}  \n**💰 Total Ticket:** ${info['Total_Venta']:,.2f}  \n**💳 Saldo Restante:** **${info['Saldo_Pendiente']:,.2f}**")
+                    st.info(f"**🛍️ Cliente:** {info['Cliente']}  \n**👤 Vendedora:** {info['Nombre_Vendedor']}  \n**🧪 Producto:** {info['Producto']}  \n**💰 Total Ticket:** ${info['Total_Venta']:,.2f}  \n**💳 Saldo Restante:** **${info['Saldo_Pendiente']:,.2f}**")
                     
                     # Desplegar historial de abonos si existen
                     abonos_historial = db.leer_abonos_por_venta(int(venta_buscada))
