@@ -85,18 +85,16 @@ def show():
                     else:
                         stock_dict[nombre] += int(row['stock'])
                         
-        # --- Buscador de inventario rápido ---
-        st.markdown("<br>", unsafe_allow_html=True)
-        busq_prod = st.text_input("🔍 Buscador de Producto (Opcional)", placeholder="Escribe el nombre del perfume...")
-        if busq_prod:
-            t_prod = str(busq_prod).lower()
-            opciones_inventario = [p for p in opciones_inventario if t_prod in str(p).lower()]
-            
         opciones_inventario.append("➕ Otro (Capturar un producto fuera de lista...)")
         
-        producto = st.selectbox("🛒 Selecciona el Producto", opciones_inventario)
+        producto = st.selectbox(
+            "🔍 Escribe o selecciona el Producto a Vender", 
+            opciones_inventario,
+            index=None,
+            placeholder="Empieza a escribir el nombre del perfume o explora la lista..."
+        )
         
-        if producto in stock_dict:
+        if producto and producto in stock_dict:
              st.info(f"📦 Stock disponible en tu almacén: **{stock_dict[producto]}** unidades.")
              limite_cantidad = stock_dict[producto]
              precio_def = precio_dict[producto]
