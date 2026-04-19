@@ -73,7 +73,12 @@ def show():
             if not df_inventario.empty:
                 df_mostrar = df_inventario[df_inventario['stock'].astype(int) > 0].copy()
                 
-                b_inv = st.text_input("🔍 Buscar en inventario", placeholder="Escribe parte del nombre...")
+                try:
+                    from st_keyup import st_keyup
+                    b_inv = st_keyup("🔍 Buscar en inventario", placeholder="Escribe parte del nombre...", key="busq_inv_keyup")
+                except ImportError:
+                    b_inv = st.text_input("🔍 Buscar en inventario", placeholder="Escribe parte del nombre... (Presiona Enter para buscar)")
+                    
                 if b_inv:
                     busq_txt = str(b_inv).lower()
                     df_mostrar = df_mostrar[df_mostrar["nombre"].astype(str).str.lower().str.contains(busq_txt)]
@@ -370,7 +375,12 @@ def show():
             df_adeudos = df_mis_ventas[df_mis_ventas["Estado_Venta"] == "Adeudo"][["ID_Venta", "Fecha_Venta", "Cliente", "Producto", "Total_Venta", "Saldo_Pendiente", "Dias_Ultimo_Abono", "Total_Abono"]].copy()
             
             if not df_adeudos.empty:
-                b_adeudo = st.text_input("🔍 Buscar Cliente o Producto", placeholder="Escribe para buscar en tus cuentas por cobrar...")
+                try:
+                    from st_keyup import st_keyup
+                    b_adeudo = st_keyup("🔍 Buscar Cliente o Producto", placeholder="Escribe para buscar en tus cuentas por cobrar...", key="busq_adeudos_keyup")
+                except ImportError:
+                    b_adeudo = st.text_input("🔍 Buscar Cliente o Producto", placeholder="Escribe para buscar en tus cuentas por cobrar... (Presiona Enter)")
+                
                 if b_adeudo:
                     str_b = str(b_adeudo).lower()
                     df_adeudos = df_adeudos[
