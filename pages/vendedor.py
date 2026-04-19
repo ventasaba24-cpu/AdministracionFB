@@ -71,10 +71,22 @@ def show():
         
         with st.expander("📑 Ver mi Lista de Precios e Inventario", expanded=False):
             if not df_inventario.empty:
-                df_mostrar = df_inventario[df_inventario['stock'].astype(int) > 0][["nombre", "stock", "precio"]].copy()
-                df_mostrar.columns = ["📦 Producto", "📊 Stock Disp.", "💵 Precio Unitario"]
-                df_mostrar["💵 Precio Unitario"] = df_mostrar["💵 Precio Unitario"].apply(lambda x: f"${float(x):,.2f}")
-                st.dataframe(df_mostrar, hide_index=True, use_container_width=True)
+                df_mostrar = df_inventario[df_inventario['stock'].astype(int) > 0].copy()
+                if not df_mostrar.empty:
+                    html_cards = ""
+                    for _, row in df_mostrar.iterrows():
+                        html_cards += f"""
+                        <div style="background-color: #f8fafc; padding: 10px; border-radius: 6px; border-left: 4px solid #3b82f6; margin-bottom: 8px; font-size: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                            <div style="font-weight: bold; color: #1e293b; margin-bottom: 4px;">🏷️ {row['nombre']}</div>
+                            <div style="display: flex; justify-content: space-between; color: #475569;">
+                                <div>📦 Stock Disp: <b style="color: #4338ca;">{int(row['stock'])}</b></div>
+                                <div>💵 Precio Unitario: <b style="color: #059669;">${float(row['precio']):,.2f}</b></div>
+                            </div>
+                        </div>
+                        """
+                    st.markdown(html_cards, unsafe_allow_html=True)
+                else:
+                    st.info("Aún no tienes productos asignados a tu almacén.")
             else:
                 st.info("Aún no tienes productos asignados a tu almacén.")
                 
