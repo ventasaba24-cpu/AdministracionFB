@@ -66,10 +66,20 @@ def show():
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("🛒 Registro de Nueva Venta")
-        
         # Cargar inventario real del vendedor
         df_inventario = db.leer_inventario(vendedor_email=st.session_state.user_email)
+        
+        with st.expander("📑 Ver mi Lista de Precios e Inventario", expanded=False):
+            if not df_inventario.empty:
+                df_mostrar = df_inventario[df_inventario['stock'].astype(int) > 0][["nombre", "stock", "precio"]].copy()
+                df_mostrar.columns = ["📦 Producto", "📊 Stock Disp.", "💵 Precio Unitario"]
+                df_mostrar["💵 Precio Unitario"] = df_mostrar["💵 Precio Unitario"].apply(lambda x: f"${float(x):,.2f}")
+                st.dataframe(df_mostrar, hide_index=True, use_container_width=True)
+            else:
+                st.info("Aún no tienes productos asignados a tu almacén.")
+                
+        st.subheader("🛒 Registro de Nueva Venta")
+        
         opciones_inventario = []
         precio_dict = {}
         stock_dict = {}
