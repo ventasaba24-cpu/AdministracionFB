@@ -3,7 +3,7 @@ import pandas as pd
 import datetime
 import streamlit as st
 from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey, text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey, text, LargeBinary
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.sql import func
 
@@ -80,6 +80,15 @@ class Abono(Base):
     comprobante_foto = Column(String(255), nullable=True)
     
     venta = relationship("Venta", back_populates="abonos")
+
+class Gasto(Base):
+    __tablename__ = 'gastos'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    concepto = Column(String(200), nullable=False)
+    monto = Column(Float, nullable=False)
+    categoria = Column(String(100), default="Otros")
+    fecha_gasto = Column(DateTime, default=datetime.datetime.utcnow)
+    ticket_foto = Column(LargeBinary, nullable=True)
 
 # --- CONTROLADOR CENTRAL DE BASE DE DATOS ---
 
@@ -544,26 +553,32 @@ class DatabaseHandler:
                  
                  # RASTREADOR MLM O(1) (Penalización oculta de 5%, 3%, 2%)
                  comision_red = 0.0
+                 comision_red_l1 = 0.0
+                 comision_red_l2 = 0.0
+                 comision_red_l3 = 0.0
                  niveles_red_activos = 0
                  
                  if vendedor:
                      p1 = vendedor.patrocinador_email
                      if p1 and p1 != "Admin" and p1 != v.vendedor_email:
-                         comision_red += v.monto_total * 0.05
+                         comision_red_l1 = v.monto_total * 0.05
+                         comision_red += comision_red_l1
                          niveles_red_activos += 1
                          user_p1 = user_dict.get(p1)
                          
                          if user_p1:
                              p2 = user_p1.patrocinador_email
                              if p2 and p2 != "Admin" and p2 != p1:
-                                 comision_red += v.monto_total * 0.03
+                                 comision_red_l2 = v.monto_total * 0.03
+                                 comision_red += comision_red_l2
                                  niveles_red_activos += 1
                                  user_p2 = user_dict.get(p2)
                                  
                                  if user_p2:
                                      p3 = user_p2.patrocinador_email
                                      if p3 and p3 != "Admin" and p3 != p2:
-                                         comision_red += v.monto_total * 0.02
+                                         comision_red_l3 = v.monto_total * 0.02
+                                         comision_red += comision_red_l3
                                          niveles_red_activos += 1
                  
                  # === METRICAS FINANCIERAS NETAS ===
@@ -589,6 +604,9 @@ class DatabaseHandler:
                      "Estado_Venta": estado,
                      "Comision_Generada": comision_ganada,
                      "Comision_Red": comision_red,
+                     "Comision_Red_L1": comision_red_l1,
+                     "Comision_Red_L2": comision_red_l2,
+                     "Comision_Red_L3": comision_red_l3,
                      "Niveles_Red": niveles_red_activos,
                      "Utilidad_Neta": utilidad_neta,
                      "Comision_Pagada": comision_pagada, # Concepto teórico de si ya superó el Adeudo
@@ -893,5 +911,58 @@ class DatabaseHandler:
                         })
                         
             return pd.DataFrame(data), niveles, bono_total, miembros_red
+        finally:
+            session.close()
+
+    def registrar_gasto(self, concepto, monto, categoria, fecha, ticket_foto=None):
+        session = self.get_session()
+        try:
+            nuevo_gasto = Gasto(
+                concepto=concepto,
+                monto=float(monto),
+                categoria=categoria,
+                fecha_gasto=fecha if fecha else datetime.datetime.utcnow(),
+                ticket_foto=ticket_foto
+            )
+            session.add(nuevo_gasto)
+            session.commit()
+            return True, "Gasto registrado correctamente."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error al registrar: {e}"
+        finally:
+            session.close()
+
+    def obtener_gastos(self):
+        session = self.get_session()
+        try:
+            gastos = session.query(Gasto).order_by(Gasto.fecha_gasto.desc()).all()
+            data = []
+            for g in gastos:
+                data.append({
+                    "ID": g.id,
+                    "Concepto": g.concepto,
+                    "Monto": g.monto,
+                    "Categoria": g.categoria,
+                    "Fecha": g.fecha_gasto.strftime("%d-%m-%Y %H:%M") if g.fecha_gasto else "",
+                    "Tiene_Foto": True if g.ticket_foto else False,
+                    "Foto_Bytes": g.ticket_foto
+                })
+            return pd.DataFrame(data)
+        finally:
+            session.close()
+
+    def eliminar_gasto(self, gasto_id):
+        session = self.get_session()
+        try:
+            gasto = session.query(Gasto).filter_by(id=gasto_id).first()
+            if gasto:
+                session.delete(gasto)
+                session.commit()
+                return True, "Gasto eliminado correctamente."
+            return False, "Gasto no encontrado."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error: {e}"
         finally:
             session.close()
