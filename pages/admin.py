@@ -461,6 +461,19 @@ def show():
                 
             st.markdown("---")
             if not df_inventario.empty:
+                try:
+                    from st_keyup import st_keyup
+                    b_admin_inv = st_keyup("🔍 Buscar rápido en su catálogo", placeholder="¿Qué nombre de producto buscas?...", key=f"b_inv_vnd")
+                except ImportError:
+                    b_admin_inv = st.text_input("🔍 Buscar rápido en su catálogo", placeholder="¿Qué nombre de producto buscas?...")
+                
+                if b_admin_inv:
+                    str_b = str(b_admin_inv).lower()
+                    df_inventario = df_inventario[df_inventario["nombre"].astype(str).str.lower().str.contains(str_b)]
+                    
+                    if df_inventario.empty:
+                        st.warning("❌ Ese producto no existe en su catálogo.")
+                        
                 st.markdown(f"**Productos en catálogo de {opciones_vnd[vendedor_sel_email]} ({len(df_inventario)} items)**")
                 for _, row in df_inventario.iterrows():
                     # Card UI para móviles
