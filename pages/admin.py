@@ -838,38 +838,37 @@ def show():
         
         with c1:
             st.markdown("#### ➕ Registrar Nuevo Gasto")
-            with st.form("nuevo_gasto_form", clear_on_submit=True):
-                concepto_g = st.text_input("Concepto del Gasto (Ej. Gasolina, Comida, Fletes)")
-                monto_g = st.number_input("Monto Pagado ($)", min_value=0.0, step=50.0)
-                cat_g = st.selectbox("Categoría", ["Operatividad", "Fletes/Envíos", "Viáticos", "Reabastecimiento", "Marketing", "Otros"])
+            concepto_g = st.text_input("Concepto del Gasto (Ej. Gasolina, Comida, Fletes)")
+            monto_g = st.number_input("Monto Pagado ($)", min_value=0.0, step=50.0)
+            cat_g = st.selectbox("Categoría", ["Operatividad", "Fletes/Envíos", "Viáticos", "Reabastecimiento", "Marketing", "Otros"])
+            
+            st.markdown("📸 **Evidencia / Ticket (Opcional)**")
+            
+            foto_camara = None
+            usar_camara = st.toggle("Activar cámara para tomar foto")
+            if usar_camara:
+                foto_camara = st.camera_input("Tomar Foto en Vivo")
                 
-                st.markdown("📸 **Evidencia / Ticket (Opcional)**")
-                
-                foto_camara = None
-                usar_camara = st.checkbox("Habilitar cámara para tomar foto")
-                if usar_camara:
-                    foto_camara = st.camera_input("Tomar Foto en Vivo")
-                    
-                foto_archivo = st.file_uploader("O subir archivo desde Galería", type=["jpg", "png", "jpeg"])
-                
-                guardar_g = st.form_submit_button("Guardar Gasto", type="primary")
-                
-                if guardar_g:
-                    if not concepto_g or monto_g <= 0:
-                        st.error("Introduce un concepto y un monto válido.")
+            foto_archivo = st.file_uploader("O subir archivo desde Galería", type=["jpg", "png", "jpeg"])
+            
+            guardar_g = st.button("Guardar Gasto", type="primary")
+            
+            if guardar_g:
+                if not concepto_g or monto_g <= 0:
+                    st.error("Introduce un concepto y un monto válido.")
+                else:
+                    foto_final = None
+                    if foto_camara:
+                        foto_final = foto_camara.getvalue()
+                    elif foto_archivo:
+                        foto_final = foto_archivo.getvalue()
+                        
+                    exito, msj = db.registrar_gasto(concepto_g, monto_g, cat_g, None, foto_final)
+                    if exito:
+                        st.success(msj)
+                        st.rerun()
                     else:
-                        foto_final = None
-                        if foto_camara:
-                            foto_final = foto_camara.getvalue()
-                        elif foto_archivo:
-                            foto_final = foto_archivo.getvalue()
-                            
-                        exito, msj = db.registrar_gasto(concepto_g, monto_g, cat_g, None, foto_final)
-                        if exito:
-                            st.success(msj)
-                            st.rerun()
-                        else:
-                            st.error(msj)
+                        st.error(msj)
                             
         with c2:
             st.markdown("#### 📜 Historial de Gastos")
