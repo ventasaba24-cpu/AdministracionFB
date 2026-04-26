@@ -844,8 +844,13 @@ def show():
                 cat_g = st.selectbox("Categoría", ["Operatividad", "Fletes/Envíos", "Viáticos", "Reabastecimiento", "Marketing", "Otros"])
                 
                 st.markdown("📸 **Evidencia / Ticket (Opcional)**")
-                foto_camara = st.camera_input("Tomar Foto en Vivo")
-                foto_archivo = st.file_uploader("O subir desde Galería", type=["jpg", "png", "jpeg"])
+                
+                foto_camara = None
+                usar_camara = st.checkbox("Habilitar cámara para tomar foto")
+                if usar_camara:
+                    foto_camara = st.camera_input("Tomar Foto en Vivo")
+                    
+                foto_archivo = st.file_uploader("O subir archivo desde Galería", type=["jpg", "png", "jpeg"])
                 
                 guardar_g = st.form_submit_button("Guardar Gasto", type="primary")
                 
