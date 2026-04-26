@@ -120,16 +120,28 @@ def show():
             utilidad_neta = df_todas["Utilidad_Neta"].sum()
             iva_generado = df_todas["IVA_(16%)"].sum()
             costo_total = df_todas["Costo_Producto"].sum()
-            comisiones_totales = df_todas["Comision_Generada"].sum()
+            comisiones_directas = df_todas["Comision_Generada"].sum()
+            comisiones_l1 = df_todas["Comision_Red_L1"].sum() if "Comision_Red_L1" in df_todas.columns else 0.0
+            comisiones_l2 = df_todas["Comision_Red_L2"].sum() if "Comision_Red_L2" in df_todas.columns else 0.0
+            comisiones_l3 = df_todas["Comision_Red_L3"].sum() if "Comision_Red_L3" in df_todas.columns else 0.0
+            comisiones_red_total = df_todas["Comision_Red"].sum()
             
             producto_top = df_todas.groupby("Producto")["Total_Venta"].sum().idxmax() if not df_todas.empty else "N/A"
             vendedor_top = df_todas.groupby("Nombre_Vendedor")["Total_Venta"].sum().idxmax() if not df_todas.empty else "N/A"
             
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4, col5 = st.columns(5)
             col1.metric("Ventas Totales Brutas", f"${ventas_totales:,.2f}")
             col2.metric("✨ Utilidad Neta (Libre)", f"${utilidad_neta:,.2f}", "Ganancia Real", delta_color="normal")
             col3.metric("IVA Reservado (16%)", f"${iva_generado:,.2f}")
-            col4.metric("Costos y Comisiones", f"${costo_total + comisiones_totales:,.2f}")
+            col4.metric("Costo Inversión", f"${costo_total:,.2f}", "Proveedores", delta_color="inverse")
+            col5.metric("Total Comisiones Pagadas", f"${comisiones_directas + comisiones_red_total:,.2f}", f"Directas: ${comisiones_directas:,.0f} | Red: ${comisiones_red_total:,.0f}", delta_color="inverse")
+            
+            st.markdown("##### 📉 Desglose de Comisiones (Multinivel)")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("🤝 Directas (Vendedor)", f"${comisiones_directas:,.2f}")
+            c2.metric("🥇 Red Nivel 1 (Patrocinador)", f"${comisiones_l1:,.2f}", "5% Asignado", delta_color="off")
+            c3.metric("🥈 Red Nivel 2", f"${comisiones_l2:,.2f}", "3% Asignado", delta_color="off")
+            c4.metric("🥉 Red Nivel 3", f"${comisiones_l3:,.2f}", "2% Asignado", delta_color="off")
             
             st.markdown("---")
             
