@@ -4,8 +4,14 @@ import datetime
 
 def check_password():
     """Returns `True` if the user is authenticated."""
-    # Procesar orden de cerrar sesión de la corrida anterior
     if st.session_state.get("wants_logout", False):
+        # Desactivar la llave secreta remota si existe
+        user_token = st.query_params.get("session_token", None)
+        if user_token:
+            from database import DatabaseHandler
+            db = DatabaseHandler()
+            db.limpiar_sesion_token(user_token)
+            
         st.query_params.clear()
             
         for key in list(st.session_state.keys()):
@@ -24,7 +30,7 @@ def check_password():
     if user_token and not st.session_state.get("logged_in", False):
         from database import DatabaseHandler
         db = DatabaseHandler()
-        user = db.get_user_by_email(user_token)
+        user = db.get_user_by_token(user_token)
         
         if user:
             st.session_state.logged_in = True
@@ -73,11 +79,11 @@ def check_password():
         from database import DatabaseHandler
         db = DatabaseHandler()
         
-        is_valid, user, msj_respuesta = db.login_seguro(username, password, client_ip)
+        is_valid, user, auth_token, msj_respuesta = db.login_seguro(username, password, client_ip)
         
         if is_valid:
-            # MÉTODO NATIVO (100% estable en iOS/Android y sin ventanas emergentes de error de iFrames)
-            st.query_params["session_token"] = user.email
+            # MÉTODO NATIVO (Ahora seguro a través de HASH ciego alfanumérico)
+            st.query_params["session_token"] = auth_token
             
             st.session_state.logged_in = True
             st.session_state.user_name = user.nombre
