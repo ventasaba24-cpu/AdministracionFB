@@ -110,14 +110,18 @@ def show():
     # 📌 PRE-CARGAR DATOS PESADOS UNA SOLA VEZ PARA OPTIMIZAR VELOCIDAD
     df_todas = db.obtener_tabla_ventas_completa()
     df_abonos_global = db.leer_abonos()
+    try:
+        df_gastos = db.obtener_gastos()
+    except:
+        df_gastos = pd.DataFrame() # Fallback temporal si la tabla no se crea a tiempo
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 KPIs", "📦 Inventario", "💵 Abonos/Pagos", "✉️ Vendedores", "📝 Correcciones"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 KPIs", "📦 Inventario", "💵 Abonos/Pagos", "✉️ Vendedores", "📝 Correcciones", "📉 Gastos y Egresos"])
 
     with tab1:
         st.subheader("Indicadores Clave de Desempeño")
         if not df_todas.empty:
             ventas_totales = df_todas["Total_Venta"].sum()
-            utilidad_neta = df_todas["Utilidad_Neta"].sum()
+            utilidad_neta_base = df_todas["Utilidad_Neta"].sum()
             iva_generado = df_todas["IVA_(16%)"].sum()
             costo_total = df_todas["Costo_Producto"].sum()
             comisiones_directas = df_todas["Comision_Generada"].sum()
@@ -126,12 +130,16 @@ def show():
             comisiones_l3 = df_todas["Comision_Red_L3"].sum() if "Comision_Red_L3" in df_todas.columns else 0.0
             comisiones_red_total = df_todas["Comision_Red"].sum()
             
+            # GASTOS EXTERNOS
+            total_gastos = df_gastos["Monto"].sum() if not df_gastos.empty else 0.0
+            utilidad_neta_real = utilidad_neta_base - total_gastos
+            
             producto_top = df_todas.groupby("Producto")["Total_Venta"].sum().idxmax() if not df_todas.empty else "N/A"
             vendedor_top = df_todas.groupby("Nombre_Vendedor")["Total_Venta"].sum().idxmax() if not df_todas.empty else "N/A"
             
             col1, col2, col3, col4, col5 = st.columns(5)
             col1.metric("Ventas Totales Brutas", f"${ventas_totales:,.2f}")
-            col2.metric("✨ Utilidad Neta (Libre)", f"${utilidad_neta:,.2f}", "Ganancia Real", delta_color="normal")
+            col2.metric("✨ Flujo Libre Final", f"${utilidad_neta_real:,.2f}", f"Egresos restados: -${total_gastos:,.2f}", delta_color="normal")
             col3.metric("IVA Reservado (16%)", f"${iva_generado:,.2f}")
             col4.metric("Costo Inversión", f"${costo_total:,.2f}", "Proveedores", delta_color="inverse")
             col5.metric("Total Comisiones Pagadas", f"${comisiones_directas + comisiones_red_total:,.2f}", f"Directas: ${comisiones_directas:,.0f} | Red: ${comisiones_red_total:,.0f}", delta_color="inverse")
@@ -821,5 +829,59 @@ def show():
                         st.markdown("<br>", unsafe_allow_html=True)
                 else:
                     st.warning("No se encontró ningún Abono coincidente.")
+
+    with tab6:
+        st.subheader("Control de Gastos y Egresos Operativos")
+        st.markdown("Registra todos los gastos ajenos al costo de producto base para tener un control exacto de tu Flujo Libre.")
+        
+        c1, c2 = st.columns([1, 1])
+        
+        with c1:
+            st.markdown("#### ➕ Registrar Nuevo Gasto")
+            with st.form("nuevo_gasto_form", clear_on_submit=True):
+                concepto_g = st.text_input("Concepto del Gasto (Ej. Gasolina, Comida, Fletes)")
+                monto_g = st.number_input("Monto Pagado ($)", min_value=0.0, step=50.0)
+                cat_g = st.selectbox("Categoría", ["Operatividad", "Fletes/Envíos", "Viáticos", "Reabastecimiento", "Marketing", "Otros"])
+                
+                st.markdown("📸 **Evidencia / Ticket (Opcional)**")
+                foto_camara = st.camera_input("Tomar Foto en Vivo")
+                foto_archivo = st.file_uploader("O subir desde Galería", type=["jpg", "png", "jpeg"])
+                
+                guardar_g = st.form_submit_button("Guardar Gasto", type="primary")
+                
+                if guardar_g:
+                    if not concepto_g or monto_g <= 0:
+                        st.error("Introduce un concepto y un monto válido.")
+                    else:
+                        foto_final = None
+                        if foto_camara:
+                            foto_final = foto_camara.getvalue()
+                        elif foto_archivo:
+                            foto_final = foto_archivo.getvalue()
+                            
+                        exito, msj = db.registrar_gasto(concepto_g, monto_g, cat_g, None, foto_final)
+                        if exito:
+                            st.success(msj)
+                            st.rerun()
+                        else:
+                            st.error(msj)
+                            
+        with c2:
+            st.markdown("#### 📜 Historial de Gastos")
+            if not df_gastos.empty:
+                for _, row in df_gastos.iterrows():
+                    with st.expander(f"💸 {row['Fecha']} | {row['Concepto']} - ${row['Monto']:,.2f}"):
+                        st.write(f"**Categoría:** {row['Categoria']}")
+                        if row['Tiene_Foto']:
+                            st.image(row['Foto_Bytes'], caption="Ticket de Comprobación", use_container_width=True)
+                        else:
+                            st.info("Sin evidencia fotográfica.")
+                            
+                        if st.button("🗑️ Eliminar Gasto", key=f"del_gasto_{row['ID']}", type="primary"):
+                            ex, mt = db.eliminar_gasto(row['ID'])
+                            if ex:
+                                st.rerun()
+            else:
+                st.info("Aún no tienes gastos registrados.")
                     
 
