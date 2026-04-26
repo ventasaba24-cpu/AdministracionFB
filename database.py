@@ -21,6 +21,7 @@ class Usuario(Base):
     tasa_comision = Column(Float, default=0.10) # 10% por defecto basado en los datos brindados
     patrocinador_email = Column(String(100), nullable=True) # Ligadura Multi-nivel
     tipo_vendedor = Column(String(50), default='Crédito') # 'Crédito' o 'One-Shot'
+    session_token = Column(String(100), nullable=True) # UUID Session Key
 
 class IntentoSeguridad(Base):
     __tablename__ = 'intentos_seguridad'
@@ -132,6 +133,13 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
              
         try:
              with engine.connect() as conn:
+                 conn.execute(text("ALTER TABLE usuarios ADD COLUMN session_token VARCHAR(100)"))
+                 conn.commit()
+        except:
+             pass
+             
+        try:
+             with engine.connect() as conn:
                  conn.execute(text("UPDATE usuarios SET patrocinador_email = (SELECT email FROM usuarios WHERE rol = 'Admin' ORDER BY id ASC LIMIT 1) WHERE patrocinador_email IS NULL AND rol != 'Admin'"))
                  conn.commit()
         except:
@@ -156,6 +164,13 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
         try:
              with engine.connect() as conn:
                  conn.execute(text("ALTER TABLE usuarios ADD COLUMN tipo_vendedor VARCHAR(50) DEFAULT 'Crédito'"))
+                 conn.commit()
+        except:
+             pass
+             
+        try:
+             with engine.connect() as conn:
+                 conn.execute(text("ALTER TABLE usuarios ADD COLUMN session_token VARCHAR(100)"))
                  conn.commit()
         except:
              pass
@@ -798,8 +813,13 @@ class DatabaseHandler:
                      return False, None, "Credenciales inválidas."
              
              # Si llegó aquí, todo está bien
+             import uuid
+             nuevo_token = str(uuid.uuid4())
+             usr.session_token = nuevo_token
+             session.commit()
+             
              self.limpiar_fallos(session, id_seguridad)
-             return True, usr, "OK"
+             return True, usr, nuevo_token, "OK"
         except Exception as e:
              session.rollback()
              return False, None, "Error interno de validación"
@@ -811,6 +831,24 @@ class DatabaseHandler:
         try:
              usr = session.query(Usuario).filter_by(email=email).first()
              return usr
+        finally:
+             session.close()
+
+    def get_user_by_token(self, token):
+        session = self.get_session()
+        try:
+             usr = session.query(Usuario).filter_by(session_token=token).first()
+             return usr
+        finally:
+             session.close()
+             
+    def limpiar_sesion_token(self, token):
+        session = self.get_session()
+        try:
+             usr = session.query(Usuario).filter_by(session_token=token).first()
+             if usr:
+                 usr.session_token = None
+                 session.commit()
         finally:
              session.close()
 
