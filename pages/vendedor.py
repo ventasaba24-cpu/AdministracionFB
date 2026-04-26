@@ -124,62 +124,58 @@ def show():
                         if cost_val > 0:
                             costo_ok_dict[nombre] = True
                         
-        opciones_inventario.append("➕ Otro (Capturar un producto fuera de lista...)")
-        
-        producto = st.selectbox(
-            "🔍 Escribe o selecciona el Producto a Vender", 
-            opciones_inventario,
-            index=None,
-            placeholder="Empieza a escribir el nombre del perfume o explora la lista..."
-        )
-        
-        if producto and producto in stock_dict:
-             st.info(f"📦 Stock disponible en tu almacén: **{stock_dict[producto]}** unidades.")
-             limite_cantidad = stock_dict[producto]
-             precio_def = precio_dict[producto]
+        if not opciones_inventario:
+            st.warning("⚠️ No cuentas con inventario. Solicita al administrador que te asigne stock para poder registrar ventas.")
         else:
-             limite_cantidad = 1000
-             precio_def = 0.0
-        
-        with st.form("venta_form", clear_on_submit=False):
-            st.markdown("### 📝 Datos de Venta")
-            cliente = st.text_input("👤 Nombre Completo del Cliente", placeholder="Ej: Maria Lopez")
+            producto = st.selectbox(
+                "Selecciona el producto a vender del inventario", 
+                opciones_inventario,
+                index=None,
+                placeholder="Elige un producto de la lista..."
+            )
             
-            if producto == "➕ Otro (Capturar un producto fuera de lista...)":
-                producto_custom = st.text_input("💎 Nombre del producto a vender", placeholder="Ej. Perfume Floral 100ml")
+            if producto and producto in stock_dict:
+                 st.info(f"📦 Stock disponible en tu almacén: **{stock_dict[producto]}** unidades.")
+                 limite_cantidad = stock_dict[producto]
+                 precio_def = precio_dict[producto]
             else:
-                producto_custom = ""
+                 limite_cantidad = 1000
+                 precio_def = 0.0
             
-            # Usar Selectbox en vez de NumberInput para la cantidad (Es más fácil en el celular)
-            opciones_cantidad = list(range(1, min(51, limite_cantidad + 1)))
-            cantidad = st.selectbox("📦 Cantidad a vender", opciones_cantidad)
-            
-            precio = st.number_input("💵 Precio Unitario Final ($)", min_value=0.0, step=50.0, format="%.2f", value=precio_def, key=f"precio_{producto}")
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            tipo_v = st.session_state.get("user_tipo_vendedor", "Crédito")
-            if tipo_v == "One-Shot":
-                # Forzar cobro total
-                st.info("🎟️ Tu perfil está etiquetado como Vendedor One-Shot. Esta venta se registrará automáticamente como liquidada 100% al contado.")
-                pagado_check = True
-            else:
-                pagado_check = st.checkbox("¿Cobro total inmediato (Al contado)?")
-                            
-            # Botón de envio
-            submit_venta = st.form_submit_button("Registrar Venta")
-            
-            if submit_venta:
-                if not cliente:
-                    st.error("El nombre del cliente es obligatorio.")
-                elif producto == "➕ Otro (Capturar un producto fuera de lista...)" and not producto_custom:
-                    st.error("Debes especificar el nombre del producto nuevo.")
-                elif producto == "➕ Otro (Capturar un producto fuera de lista...)" or (producto in costo_ok_dict and not costo_ok_dict[producto]):
-                    # Bloqueamos tanto productos incompletos como manuales fuera de inventario segun requerimiento
-                    st.error("❌ Este producto no fue cargado correctamente en el sistema (Falta información de inventario previa). Por favor pide al administrador que lo asigne antes de venderlo.")
+            with st.form("venta_form", clear_on_submit=False):
+                st.markdown("### 📝 Datos de Venta")
+                cliente = st.text_input("👤 Nombre Completo del Cliente", placeholder="Ej: Maria Lopez")
+                
+                # Usar Selectbox en vez de NumberInput para la cantidad (Es más fácil en el celular)
+                opciones_cantidad = list(range(1, min(51, limite_cantidad + 1)))
+                cantidad = st.selectbox("📦 Cantidad a vender", opciones_cantidad)
+                
+                precio = st.number_input("💵 Precio Unitario Final ($)", min_value=0.0, step=50.0, format="%.2f", value=precio_def, key=f"precio_venta_input")
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                tipo_v = st.session_state.get("user_tipo_vendedor", "Crédito")
+                if tipo_v == "One-Shot":
+                    # Forzar cobro total
+                    st.info("🎟️ Tu perfil está etiquetado como Vendedor One-Shot. Esta venta se registrará automáticamente como liquidada 100% al contado.")
+                    pagado_check = True
                 else:
-                    prod_final = producto
-                    
-                    st.toast(f"Procesando venta de {prod_final}...")
+                    pagado_check = False
+                                
+                # Botón de envio
+                submit_venta = st.form_submit_button("Registrar Venta")
+                
+                if submit_venta:
+                    if not cliente:
+                        st.error("El nombre del cliente es obligatorio.")
+                    elif not producto:
+                        st.error("Por favor selecciona un producto.")
+                    elif producto in costo_ok_dict and not costo_ok_dict[producto]:
+                        # Bloqueamos productos incompletos (sin costo_compra)
+                        st.error("❌ Este producto no fue cargado correctamente en el sistema (Falta información de inventario previa). Por favor pide al administrador que lo asigne antes de venderlo.")
+                    else:
+                        prod_final = producto
+                        
+                        st.toast(f"Procesando venta de {prod_final}...")
                     
                     # Llamada a DB 
                     exito, id_v, monto = db.registrar_venta(st.session_state.user_email, cliente, prod_final, cantidad, precio)
