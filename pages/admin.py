@@ -253,6 +253,17 @@ def show():
                 df_perfumes.columns = ["Unidades_Vendidas", "Bruto_Ingresado", "Inversion_Total", "IVA_Retenido", "Comisiones_Pagadas", "Comisiones_Red_Pagadas", "Utilidad_Real_Meta"]
                 df_perfumes = df_perfumes.reset_index().sort_values(by="Utilidad_Real_Meta", ascending=False)
                 
+                try:
+                    from st_keyup import st_keyup
+                    b_admin_rent = st_keyup("🔍 Filtrar análisis por nombre de producto...", placeholder="Escribe el nombre del perfume para aislar su rentabilidad...", key="b_rent_keyup")
+                except ImportError:
+                    b_admin_rent = st.text_input("🔍 Filtrar análisis por nombre de producto...", placeholder="Escribe el nombre del perfume para aislar su rentabilidad...")
+
+                if b_admin_rent:
+                    df_perfumes = df_perfumes[df_perfumes['Producto'].astype(str).str.lower().str.contains(str(b_admin_rent).lower())]
+                    if df_perfumes.empty:
+                        st.info("No hay transacciones registradas de un producto con ese nombre.")
+                
                 for _, r in df_perfumes.iterrows():
                     margen = 0.0
                     if r['Bruto_Ingresado'] > 0:
