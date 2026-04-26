@@ -844,12 +844,7 @@ def show():
             
             st.markdown("📸 **Evidencia / Ticket (Opcional)**")
             
-            foto_camara = None
-            usar_camara = st.toggle("Activar cámara para tomar foto")
-            if usar_camara:
-                foto_camara = st.camera_input("Tomar Foto en Vivo")
-                
-            foto_archivo = st.file_uploader("O subir archivo desde Galería", type=["jpg", "png", "jpeg"])
+            foto_archivo = st.file_uploader("Subir foto o capturar con Cámara (Alta Calidad)", type=["jpg", "png", "jpeg"])
             
             guardar_g = st.button("Guardar Gasto", type="primary")
             
@@ -858,10 +853,25 @@ def show():
                     st.error("Introduce un concepto y un monto válido.")
                 else:
                     foto_final = None
-                    if foto_camara:
-                        foto_final = foto_camara.getvalue()
-                    elif foto_archivo:
-                        foto_final = foto_archivo.getvalue()
+                    if foto_archivo:
+                        raw_bytes = foto_archivo.getvalue()
+                        
+                        # --- OPTIMIZACION DE IMAGEN PARA NO SATURAR BASE DE DATOS ---
+                        try:
+                            from PIL import Image
+                            import io
+                            img = Image.open(io.BytesIO(raw_bytes))
+                            if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+                            # Redimensionar a maximo 1000px de ancho preservando relacion de aspecto
+                            if img.width > 1000:
+                                alto = int(float(img.height) * (1000.0 / float(img.width)))
+                                img = img.resize((1000, alto), Image.LANCZOS)
+                            salida = io.BytesIO()
+                            img.save(salida, format="JPEG", quality=65) # Comprime drasticamente el peso
+                            foto_final = salida.getvalue()
+                        except:
+                            # Si pillo un error inesperado de compresion, subo los bytes orginales
+                            foto_final = raw_bytes
                         
                     exito, msj = db.registrar_gasto(concepto_g, monto_g, cat_g, None, foto_final)
                     if exito:
