@@ -106,17 +106,23 @@ def show():
         opciones_inventario = []
         precio_dict = {}
         stock_dict = {}
+        costo_ok_dict = {}
         
         if not df_inventario.empty:
             for _, row in df_inventario.iterrows():
                 if int(row['stock']) > 0:
                     nombre = row['nombre']
+                    cost_val = float(row.get('costo_compra', 0.0))
+                    
                     if nombre not in opciones_inventario:
                         opciones_inventario.append(nombre)
                         precio_dict[nombre] = float(row['precio'])
                         stock_dict[nombre] = int(row['stock'])
+                        costo_ok_dict[nombre] = (cost_val > 0)
                     else:
                         stock_dict[nombre] += int(row['stock'])
+                        if cost_val > 0:
+                            costo_ok_dict[nombre] = True
                         
         opciones_inventario.append("➕ Otro (Capturar un producto fuera de lista...)")
         
@@ -167,8 +173,11 @@ def show():
                     st.error("El nombre del cliente es obligatorio.")
                 elif producto == "➕ Otro (Capturar un producto fuera de lista...)" and not producto_custom:
                     st.error("Debes especificar el nombre del producto nuevo.")
+                elif producto == "➕ Otro (Capturar un producto fuera de lista...)" or (producto in costo_ok_dict and not costo_ok_dict[producto]):
+                    # Bloqueamos tanto productos incompletos como manuales fuera de inventario segun requerimiento
+                    st.error("❌ Este producto no fue cargado correctamente en el sistema (Falta información de inventario previa). Por favor pide al administrador que lo asigne antes de venderlo.")
                 else:
-                    prod_final = producto_custom if producto_custom else producto
+                    prod_final = producto
                     
                     st.toast(f"Procesando venta de {prod_final}...")
                     
