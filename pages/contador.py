@@ -23,11 +23,11 @@ def show():
 
     # Estandarización a DateTime
     if not df_todas.empty:
-        df_todas['Fecha_Venta'] = pd.to_datetime(df_todas['Fecha_Venta'])
+        df_todas['Fecha_Venta'] = pd.to_datetime(df_todas['Fecha_Venta'], dayfirst=True, errors='coerce')
     if not df_abonos.empty:
-        df_abonos['fecha_abono'] = pd.to_datetime(df_abonos['fecha_abono'])
+        df_abonos['fecha_abono'] = pd.to_datetime(df_abonos['fecha_abono'], dayfirst=True, errors='coerce')
     if not df_gastos_full.empty:
-        df_gastos_full['Fecha'] = pd.to_datetime(df_gastos_full['Fecha'])
+        df_gastos_full['Fecha'] = pd.to_datetime(df_gastos_full['Fecha'], dayfirst=True, errors='coerce')
 
     # =================================================================
     # BLOQUE 1: APERTURA (CONGELAMIENTO HISTÓRICO)
