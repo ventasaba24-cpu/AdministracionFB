@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
+from database import DatabaseHandler
 
 def show():
     if "user_role" not in st.session_state or st.session_state.user_role != "Contador":
@@ -10,7 +11,6 @@ def show():
     st.title("💼 Panel Contable e Impuestos")
     st.markdown("Revisión de flujo de activos, cobros, pasivos y retenciones de IVA.")
 
-    from database import DatabaseHandler
     db = DatabaseHandler()
 
     # Data completa de Ventas
