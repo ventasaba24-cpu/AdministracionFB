@@ -791,7 +791,7 @@ class DatabaseHandler:
                  # Restar minutos locales
                  resta = tiempo_bloqueo - datetime.datetime.utcnow()
                  minutos_restantes = max(1, int(resta.total_seconds() / 60))
-                 return False, None, f"Por seguridad tecnológica, este acceso ha sido temporalmente suspendido. Intente de nuevo en {minutos_restantes} minutos."
+                 return False, None, None, f"Por seguridad tecnológica, este acceso ha sido temporalmente suspendido. Intente de nuevo en {minutos_restantes} minutos."
              
              # Buscar existencial
              usr = session.query(Usuario).filter_by(email=email).first()
@@ -799,7 +799,7 @@ class DatabaseHandler:
              # Fallo intencional temprano si no existe el correo
              if not usr:
                  self.registrar_fallo(session, id_seguridad)
-                 return False, None, "Credenciales inválidas."
+                 return False, None, None, "Credenciales inválidas."
                  
              # Validar el hash
              if not check_password_hash(usr.password, password):
@@ -810,7 +810,7 @@ class DatabaseHandler:
                      session.commit()
                  else:
                      self.registrar_fallo(session, id_seguridad)
-                     return False, None, "Credenciales inválidas."
+                     return False, None, None, "Credenciales inválidas."
              
              # Si llegó aquí, todo está bien
              import uuid
@@ -822,7 +822,7 @@ class DatabaseHandler:
              return True, usr, nuevo_token, "OK"
         except Exception as e:
              session.rollback()
-             return False, None, "Error interno de validación"
+             return False, None, None, "Error interno de validación"
         finally:
              session.close()
 
