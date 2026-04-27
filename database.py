@@ -182,6 +182,18 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
         except:
              pass
         
+        # Falla #5: INDEXACIÓN EXTREMA (Velocidad Operacional y Búsquedas O(log n))
+        try:
+             with engine.connect() as conn:
+                 conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ventas_vendedor ON ventas(vendedor_email)"))
+                 conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas(fecha_venta)"))
+                 conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ventas_producto ON ventas(producto_nombre)"))
+                 conn.execute(text("CREATE INDEX IF NOT EXISTS idx_productos_nombre ON productos(nombre)"))
+                 conn.execute(text("CREATE INDEX IF NOT EXISTS idx_abonos_venta ON abonos(venta_id)"))
+                 conn.commit()
+        except:
+             pass # En caso de que el dialecto rechace la sintaxis.
+             
     Base.metadata.create_all(engine)
     SessionMaker = sessionmaker(bind=engine, expire_on_commit=False)
     return engine, SessionMaker
@@ -241,6 +253,18 @@ class DatabaseHandler:
                 query = query.filter_by(vendedor_email=vendedor_email)
             df = pd.read_sql(query.statement, session.bind)
             return df
+        finally:
+            session.close()
+
+    def obtener_valor_inventario(self):
+        """Calcula el capital físico actual sumando (stock * costo_compra) de todos los productos."""
+        session = self.get_session()
+        try:
+            total_valor = 0.0
+            productos = session.query(Producto).all()
+            for p in productos:
+                total_valor += (p.stock * p.costo_compra)
+            return total_valor
         finally:
             session.close()
             
@@ -373,8 +397,14 @@ class DatabaseHandler:
         try:
             monto_total = float(cantidad) * float(precio_unitario)
             
-            # FIFO Logic (First In, First Out) by Lote
-            productos_lotes = session.query(Producto).filter_by(nombre=producto, vendedor_email=vendedor_email).order_by(Producto.id.asc()).all()
+            # FIFO Logic y Candado de Concurrencia PESSIMISTIC LOCKING
+            try:
+                # Nube (PostgreSQL) Soporta Bloqueo Riguroso
+                productos_lotes = session.query(Producto).filter_by(nombre=producto, vendedor_email=vendedor_email).with_for_update().order_by(Producto.id.asc()).all()
+            except Exception:
+                # Local (SQLite) Bloquea mediante el driver, no requiere FOR UPDATE
+                session.rollback()
+                productos_lotes = session.query(Producto).filter_by(nombre=producto, vendedor_email=vendedor_email).order_by(Producto.id.asc()).all()
             
             restante_a_descontar = cantidad
             costo_total = 0.0
@@ -642,14 +672,27 @@ class DatabaseHandler:
             if not venta:
                 return False, "Venta no encontrada."
             
-            # Devolver stock
+            # Devolver stock siempre
             mi_producto = session.query(Producto).filter_by(nombre=venta.producto_nombre, vendedor_email=venta.vendedor_email).first()
             if mi_producto:
                 mi_producto.stock += venta.cantidad
                 
-            session.delete(venta) # Cascada eliminará Abonos adjuntos
-            session.commit()
-            return True, "Venta eliminada exitosamente y stock devuelto."
+            # Logica Anti-fugas
+            if venta.comision_cobrada:
+                session.query(Abono).filter_by(venta_id=venta_id).delete()
+                venta.estado = 'Devolución/Cancelada (Reversa)'
+                venta.monto_total = 0.0
+                venta.cantidad = 0
+                venta.costo_historico = 0.0
+                venta.comision_generada = -abs(venta.comision_generada) if venta.comision_generada else 0.0
+                if hasattr(venta, 'comision_red') and venta.comision_red:
+                    venta.comision_red = -abs(venta.comision_red)
+                session.commit()
+                return True, "Venta anulada. Ya se le había pagado comisión; se pasmó en monto negativo para ser restada de su próximo pago."
+            else:
+                session.delete(venta) # Cascada eliminará Abonos adjuntos
+                session.commit()
+                return True, "Venta eliminada exitosamente y stock devuelto."
         except Exception as e:
             session.rollback()
             return False, f"Error al eliminar venta: {e}"
