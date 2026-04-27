@@ -41,6 +41,7 @@ def show():
     # 2. Cuentas por Cobrar Legacy
     df_ventas_viejas = df_todas[df_todas['Fecha_Venta'] < FECHA_CORTE] if not df_todas.empty else pd.DataFrame()
     deuda_historica = 0.0
+    pasivo_comisiones = 0.0
     if not df_ventas_viejas.empty:
         ids_viejos = df_ventas_viejas['ID_Venta'].tolist()
         if not df_abonos.empty:
@@ -48,12 +49,33 @@ def show():
         else:
             abonos_viejos_total = 0.0
         deuda_historica = df_ventas_viejas['Total_Venta'].sum() - abonos_viejos_total
+        
+        mask_comisiones = df_ventas_viejas['Comision_Fisicamente_Cobrada'] == False
+        pasivo_comisiones = df_ventas_viejas.loc[mask_comisiones, 'Comision_Generada'].sum()
 
-    c_hist1, c_hist2 = st.columns(2)
-    c_hist1.metric("📦 Capital Físico (Inventario en Bodega)", f"${valor_inventario:,.2f}", 
-                   help="Valor neto de tu mercancía multiplicando las existencias físicas (Stock) por tu Costo de Compra privado.")
-    c_hist2.metric("💸 Cuentas por Cobrar (Legacy Marzo-Abril)", f"${deuda_historica:,.2f}", 
-                   help="El dinero que falta recuperar de todas las deudas contraídas antes de abrir este ejercicio.")
+    # 3. Flujo Histórico y Pasivos
+    df_gastos_viejos = df_gastos_full[df_gastos_full['Fecha'] < FECHA_CORTE] if not df_gastos_full.empty else pd.DataFrame()
+    gastos_viejos_total = df_gastos_viejos['Monto'].sum() if not df_gastos_viejos.empty else 0.0
+    
+    df_abonos_viejos = df_abonos[df_abonos['fecha_abono'] < FECHA_CORTE] if not df_abonos.empty else pd.DataFrame()
+    abonos_viejos_raw = df_abonos_viejos['monto_abono'].sum() if not df_abonos_viejos.empty else 0.0
+    
+    caja_remanente = abonos_viejos_raw - gastos_viejos_total
+
+    c_hist1, c_hist2, c_hist3 = st.columns(3)
+    c_hist1.metric("📦 Capital Físico (Bodega)", f"${valor_inventario:,.2f}", 
+                   help="Valor de inversión de la mercancía existente.")
+    c_hist2.metric("💸 Cuentas x Cobrar (Legacy)", f"${deuda_historica:,.2f}", 
+                   help="Saldos pendientes de clientes por ventas anteriores a mayo.")
+    c_hist3.metric("🛑 Pasivo Comisiones", f"-${pasivo_comisiones:,.2f}",
+                   help="Dinero que le PERTENECE a tus vendedores por sus comisiones pasadas no cobradas aún. Reserva este monto.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    c_hist4, c_hist5 = st.columns(2)
+    c_hist4.metric("📉 Gastos Históricos (Quemado)", f"${gastos_viejos_total:,.2f}",
+                   help="Suma de combustible, viáticos y mermas quemados previo a este arranque.")
+    c_hist5.metric("💰 Caja (Efectivo Remanente)", f"${caja_remanente:,.2f}", delta="Punto de Arranque", delta_color="off",
+                   help="(Total Abonos - Total Gastos). El efectivo inicial que contablemente debería existir en tarjeta o caja.")
 
     st.markdown("---")
 
