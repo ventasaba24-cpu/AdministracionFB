@@ -72,17 +72,32 @@ def show():
     st.markdown("### Resumen Fiscal (Cuadre Maestría)")
     st.markdown("Métricas pareadas 1:1 con tabuladores ejecutivos para prevención de discrepancias.")
     
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Ventas Brutas", f"${ventas_totales_brutas:,.2f}")
-    col2.metric("Utilidad Base (Sin Op.)", f"${utilidad_neta_base:,.2f}")
-    col3.metric("IVA Reservado", f"${iva_16:,.2f}")
-    col4.metric("Deducción COGS", f"${cogs_total:,.2f}")
-    col5.metric("Total Comisiones ML", f"${comisiones_totales:,.2f}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Ventas Brutas", f"${ventas_totales_brutas:,.2f}", 
+              help="El monto total absoluto cobrado por la suma de todas las ventas seleccionadas, sin restar ningún impuesto o deducción.")
+              
+    c2.metric("IVA (16% Reservado)", f"${iva_16:,.2f}", 
+              help="El 16% bloqueado automáticamente para los impuestos. Es dinero que pertenece al SAT y no se contabiliza en las utilidades.")
+              
+    c3.metric("Inv. Producto (COGS)", f"${cogs_total:,.2f}", 
+              help="Costo de Bienes Vendidos (Inversión). Determina el dinero congelado que debe usarse para re-comprarle a los proveedores de perfumes y reponer la mercancía vendida.")
     
     st.markdown("<br>", unsafe_allow_html=True)
-    c_g1, c_g2 = st.columns(2)
-    c_g1.metric("📉 Gastos de Operación (OPEX)", f"${total_gastos_opex:,.2f}")
-    c_g2.metric("✨ Flujo Libre de Utilidad Neta", f"${flujo_libre_real:,.2f}", delta=f"-${total_gastos_opex:,.2f} OPEX", delta_color="inverse")
+    c4, c5, c6 = st.columns(3)
+    c4.metric("Comisiones (Red)", f"${comisiones_totales:,.2f}", 
+              help="Capital cedido como pago por rendimiento a los Agentes Vendedores, Patrocinadores y multinivel. No es utilidad tuya.")
+              
+    c5.metric("Utilidad Bruta (Sin Op.)", f"${utilidad_neta_base:,.2f}", 
+              help="Tu Dinero Base. Obtenido exclusivamente de restar Impuestos, Costos de Inversión y Comisiones a las Ventas. Aún le faltan descontar los viáticos (Módulo de Gastos).")
+              
+    c6.metric("Gastos (OPEX)", f"-${total_gastos_opex:,.2f}", 
+              help="Gastos de Operatividad: Casetas, viáticos, sueldos administrativos, envíos y otros egresos de la sección de Gastos.")
+              
+    st.markdown("<br>", unsafe_allow_html=True)
+    # Centrar la métrica final de impacto usando columnas vacías a los lados
+    _, c_center, _ = st.columns([1, 2, 1])
+    c_center.metric("✨ Utilidad Neta Real", f"${flujo_libre_real:,.2f}", delta=f"Eficiencia contable validada", delta_color="normal",
+                    help="🔥 EL FLUJO LIBRE EFECTIVO: Es la Utilidad Bruta restando los Gastos de Operación. Es el capital financieramente libre, puro y libre de deudas de la empresa.")
 
     st.markdown("---")
     
