@@ -35,47 +35,12 @@ def show():
     st.markdown("## 🏛️ Capital Fijo y Apertura (Bloque Histórico)")
     st.markdown("*Datos congelados anteriores al 1 de Mayo. Constituyen tu base de inversión y cartera vencida de entrada.*")
     
-    # 1. Capital Físico
-    valor_inventario = db.obtener_valor_inventario()
-    
-    # 2. Cuentas por Cobrar Legacy
-    df_ventas_viejas = df_todas[df_todas['Fecha_Venta'] < FECHA_CORTE] if not df_todas.empty else pd.DataFrame()
-    deuda_historica = 0.0
-    pasivo_comisiones = 0.0
-    if not df_ventas_viejas.empty:
-        ids_viejos = df_ventas_viejas['ID_Venta'].tolist()
-        if not df_abonos.empty:
-            abonos_viejos_total = df_abonos[df_abonos['venta_id'].isin(ids_viejos)]['monto_abono'].sum()
-        else:
-            abonos_viejos_total = 0.0
-        deuda_historica = df_ventas_viejas['Total_Venta'].sum() - abonos_viejos_total
-        
-        mask_comisiones = df_ventas_viejas['Comision_Fisicamente_Cobrada'] == False
-        pasivo_comisiones = df_ventas_viejas.loc[mask_comisiones, 'Comision_Generada'].sum()
-
     # 3. Flujo Histórico y Pasivos
     df_gastos_viejos = df_gastos_full[df_gastos_full['Fecha'] < FECHA_CORTE] if not df_gastos_full.empty else pd.DataFrame()
     gastos_viejos_total = df_gastos_viejos['Monto'].sum() if not df_gastos_viejos.empty else 0.0
     
-    df_abonos_viejos = df_abonos[df_abonos['fecha_abono'] < FECHA_CORTE] if not df_abonos.empty else pd.DataFrame()
-    abonos_viejos_raw = df_abonos_viejos['monto_abono'].sum() if not df_abonos_viejos.empty else 0.0
-    
-    caja_remanente = abonos_viejos_raw - gastos_viejos_total
-
-    c_hist1, c_hist2, c_hist3 = st.columns(3)
-    c_hist1.metric("📦 Capital Físico (Bodega)", f"${valor_inventario:,.2f}", 
-                   help="Valor de inversión de la mercancía existente.")
-    c_hist2.metric("💸 Cuentas x Cobrar (Legacy)", f"${deuda_historica:,.2f}", 
-                   help="Saldos pendientes de clientes por ventas anteriores a mayo.")
-    c_hist3.metric("🛑 Pasivo Comisiones", f"-${pasivo_comisiones:,.2f}",
-                   help="Dinero que le PERTENECE a tus vendedores por sus comisiones pasadas no cobradas aún. Reserva este monto.")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    c_hist4, c_hist5 = st.columns(2)
-    c_hist4.metric("📉 Gastos Históricos (Quemado)", f"${gastos_viejos_total:,.2f}",
-                   help="Suma de combustible, viáticos y mermas quemados previo a este arranque.")
-    c_hist5.metric("💰 Caja (Efectivo Remanente)", f"${caja_remanente:,.2f}", delta="Punto de Arranque", delta_color="off",
-                   help="(Total Abonos - Total Gastos). El efectivo inicial que contablemente debería existir en tarjeta o caja.")
+    st.metric("📉 Gastos Históricos (Quemado)", f"${gastos_viejos_total:,.2f}",
+              help="Suma de combustible, viáticos y mermas quemados previo a este arranque.")
 
     st.markdown("---")
 
@@ -103,57 +68,44 @@ def show():
         with colf2:
             fecha_fin = st.date_input("Fecha Fin", value=date.today())
             
-        mask_v = (df_ventas_nuevas['Fecha_Venta'] >= pd.to_datetime(fecha_inicio)) & (df_ventas_nuevas['Fecha_Venta'] <= pd.to_datetime(fecha_fin) + pd.Timedelta(days=1))
-        df_vn_filt = df_ventas_nuevas.loc[mask_v].copy()
-        
-        mask_g = (df_gastos_nuevos['Fecha'] >= pd.to_datetime(fecha_inicio)) & (df_gastos_nuevos['Fecha'] <= pd.to_datetime(fecha_fin) + pd.Timedelta(days=1))
-        df_gn_filt = df_gastos_nuevos.loc[mask_g].copy()
-        
-        mask_a = (df_abonos_nuevos['fecha_abono'] >= pd.to_datetime(fecha_inicio)) & (df_abonos_nuevos['fecha_abono'] <= pd.to_datetime(fecha_fin) + pd.Timedelta(days=1))
-        df_an_filt = df_abonos_nuevos.loc[mask_a].copy()
+        if not df_ventas_nuevas.empty:
+            mask_v = (df_ventas_nuevas['Fecha_Venta'] >= pd.to_datetime(fecha_inicio)) & (df_ventas_nuevas['Fecha_Venta'] <= pd.to_datetime(fecha_fin) + pd.Timedelta(days=1))
+            df_vn_filt = df_ventas_nuevas.loc[mask_v].copy()
+        else:
+            df_vn_filt = pd.DataFrame()
+            
+        if not df_gastos_nuevos.empty:
+            mask_g = (df_gastos_nuevos['Fecha'] >= pd.to_datetime(fecha_inicio)) & (df_gastos_nuevos['Fecha'] <= pd.to_datetime(fecha_fin) + pd.Timedelta(days=1))
+            df_gn_filt = df_gastos_nuevos.loc[mask_g].copy()
+        else:
+            df_gn_filt = pd.DataFrame()
+            
+        if not df_abonos_nuevos.empty:
+            mask_a = (df_abonos_nuevos['fecha_abono'] >= pd.to_datetime(fecha_inicio)) & (df_abonos_nuevos['fecha_abono'] <= pd.to_datetime(fecha_fin) + pd.Timedelta(days=1))
+            df_an_filt = df_abonos_nuevos.loc[mask_a].copy()
+        else:
+            df_an_filt = pd.DataFrame()
     else:
         df_vn_filt = df_ventas_nuevas.copy()
         df_gn_filt = df_gastos_nuevos.copy()
         df_an_filt = df_abonos_nuevos.copy()
 
     # Cálculo Global Vigente
-    ventas_totales_brutas = df_vn_filt['Total_Venta'].sum() if not df_vn_filt.empty else 0.0
-    cogs_total = df_vn_filt['Costo_Producto'].sum() if not df_vn_filt.empty else 0.0
-    utilidad_neta_base = df_vn_filt['Utilidad_Neta'].sum() if not df_vn_filt.empty else 0.0
-    
     total_gastos_opex = df_gn_filt['Monto'].sum() if not df_gn_filt.empty else 0.0
-    flujo_libre_real = utilidad_neta_base - total_gastos_opex
-
-    comisiones_totales = df_vn_filt['Comision_Generada'].sum() if not df_vn_filt.empty else 0.0
-    if 'Comision_Red' in df_vn_filt.columns:
-        comisiones_totales += df_vn_filt['Comision_Red'].sum()
 
     # CÁLCULO DE IVA POR FLUJO DE EFECTIVO (NUEVO REQUERIMIENTO)
     total_efectivo_cobrado = df_an_filt['monto_abono'].sum() if not df_an_filt.empty else 0.0
     iva_flujo = (total_efectivo_cobrado / 1.16) * 0.16 if total_efectivo_cobrado > 0 else 0.0
 
-    st.markdown("### Resumen Fiscal (Basado en Flujo)")
-    
     c1, c2, c3 = st.columns(3)
-    c1.metric("Ventas Brutas Generadas", f"${ventas_totales_brutas:,.2f}", 
-              help="Suma total de nuevas facturaciones desde el 1 de mayo, se hayan pagado o no.")
-              
-    c2.metric("💳 Flujo Total Cobrado (Abonos)", f"${total_efectivo_cobrado:,.2f}", 
+    c1.metric("💳 Flujo Total Cobrado (Abonos)", f"${total_efectivo_cobrado:,.2f}", 
               help="Dinero real nuevo depositado este mes.")
               
-    c3.metric("🔴 IVA Causado SAT (16% de Flujo)", f"${iva_flujo:,.2f}", 
+    c2.metric("🔴 IVA Causado SAT (16% de Flujo)", f"${iva_flujo:,.2f}", 
               help="[EXTRACCION LEGAL]: El SAT exige el IVA solo de los depósitos bancarios reales. Esta fórmula extrae el 16% de todos los Abonos cobrados en esta ventana.")
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    c4, c5, c6 = st.columns(3)
-    c4.metric("Deducción de Producto", f"${cogs_total:,.2f}", help="Costo de las unidades que salieron de almacén.")
-    c5.metric("Comisiones Cedidas", f"${comisiones_totales:,.2f}", help="Pagos totales a Agentes de ventas.")
-    c6.metric("Gastos (OPEX)", f"-${total_gastos_opex:,.2f}", help="Mermas operacionales extraídas del mes.")
               
-    st.markdown("<br>", unsafe_allow_html=True)
-    _, c_center, _ = st.columns([1, 2, 1])
-    c_center.metric("✨ Utilidad Neta Real", f"${flujo_libre_real:,.2f}", delta="P&L Vigente", delta_color="normal",
-                    help="La rentabilidad final tras pagar producto, deducciones, comisiones y gastos operativos en las ventas nuevas.")
+    c3.metric("📉 Gastos (OPEX)", f"-${total_gastos_opex:,.2f}", 
+              help="Mermas operacionales extraídas del mes.")
 
     st.markdown("---")
     
