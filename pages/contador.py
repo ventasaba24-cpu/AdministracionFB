@@ -115,18 +115,30 @@ def show():
     st.markdown("### Exportación de Transacciones (Solo Operativo)")
     st.markdown("Tabla saneada y limpia para uso del contador, excluida de data histórica de abril.")
     
-    if not df_vn_filt.empty:
-        columnas_contables = [
-            "ID_Venta", "Fecha_Venta", "Cliente", "Producto", 
-            "Costo_Producto", "IVA_(16%)", "Total_Venta", "Comision_Generada", "Utilidad_Neta"
-        ]
-        columnas_contables = [c for c in columnas_contables if c in df_vn_filt.columns]
-        df_export = df_vn_filt[columnas_contables].copy()
+    if not df_an_filt.empty:
+        # Unir abonos con los detalles de la venta (Cliente y Producto)
+        df_export = pd.merge(
+            df_an_filt, 
+            df_todas[['ID_Venta', 'Cliente', 'Producto']], 
+            left_on='venta_id', 
+            right_on='ID_Venta', 
+            how='left'
+        )
         
-        for col in ["Costo_Producto", "IVA_(16%)", "Total_Venta", "Comision_Generada", "Utilidad_Neta"]:
-            if col in df_export.columns:
-                df_export[col] = df_export[col].map("${:,.2f}".format)
-            
-        st.dataframe(df_export, width="stretch", height=500)
+        # Preparar columnas
+        df_export['Fecha'] = df_export['fecha_abono'].dt.strftime('%d-%b-%Y')
+        df_export['IVA_a_Pagar'] = (df_export['monto_abono'] / 1.16) * 0.16
+        
+        columnas_finales = ["Fecha", "Cliente", "Producto", "monto_abono", "IVA_a_Pagar"]
+        df_mostrar = df_export[columnas_finales].copy()
+        
+        # Renombrar para presentación
+        df_mostrar.rename(columns={'monto_abono': 'Abono_Recibido'}, inplace=True)
+        
+        # Formato de moneda
+        df_mostrar['Abono_Recibido'] = df_mostrar['Abono_Recibido'].map("${:,.2f}".format)
+        df_mostrar['IVA_a_Pagar'] = df_mostrar['IVA_a_Pagar'].map("${:,.2f}".format)
+        
+        st.dataframe(df_mostrar, width="stretch", height=500)
     else:
-        st.caption("Aún no hay desglose descargable en la franja operativa actual.")
+        st.caption("Aún no hay abonos descargables en la franja operativa actual.")
