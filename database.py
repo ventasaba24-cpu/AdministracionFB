@@ -90,6 +90,8 @@ class Gasto(Base):
     categoria = Column(String(100), default="Otros")
     fecha_gasto = Column(DateTime, default=datetime.datetime.utcnow)
     ticket_foto = Column(LargeBinary, nullable=True)
+    factura_xml = Column(LargeBinary, nullable=True)
+    factura_pdf = Column(LargeBinary, nullable=True)
 
 # --- CONTROLADOR CENTRAL DE BASE DE DATOS ---
 
@@ -995,7 +997,7 @@ class DatabaseHandler:
         finally:
             session.close()
 
-    def registrar_gasto(self, concepto, monto, categoria, fecha, ticket_foto=None):
+    def registrar_gasto(self, concepto, monto, categoria, fecha, ticket_foto=None, factura_xml=None, factura_pdf=None):
         session = self.get_session()
         try:
             nuevo_gasto = Gasto(
@@ -1003,7 +1005,9 @@ class DatabaseHandler:
                 monto=float(monto),
                 categoria=categoria,
                 fecha_gasto=fecha if fecha else datetime.datetime.utcnow(),
-                ticket_foto=ticket_foto
+                ticket_foto=ticket_foto,
+                factura_xml=factura_xml,
+                factura_pdf=factura_pdf
             )
             session.add(nuevo_gasto)
             session.commit()
@@ -1027,7 +1031,11 @@ class DatabaseHandler:
                     "Categoria": g.categoria,
                     "Fecha": g.fecha_gasto.strftime("%d-%m-%Y %H:%M") if g.fecha_gasto else "",
                     "Tiene_Foto": True if g.ticket_foto else False,
-                    "Foto_Bytes": g.ticket_foto
+                    "Foto_Bytes": g.ticket_foto,
+                    "Tiene_XML": True if g.factura_xml else False,
+                    "Tiene_PDF": True if g.factura_pdf else False,
+                    "XML_Bytes": g.factura_xml,
+                    "PDF_Bytes": g.factura_pdf
                 })
             return pd.DataFrame(data)
         finally:
