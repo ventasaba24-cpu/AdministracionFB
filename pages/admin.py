@@ -371,8 +371,25 @@ def show():
             
             df_adeudos = df_todas[df_todas["Estado_Venta"] == "Adeudo"].copy()
             if not df_adeudos.empty:
-                # Sort initially by days since last payment descending
-                df_adeudos = df_adeudos.sort_values(by="Dias_Ultimo_Abono", ascending=False)
+                try:
+                    from st_keyup import st_keyup
+                    busq_adeudos = st_keyup("🔍 Buscar deudor, vendedor o producto...", placeholder="Escribe para filtrar la lista...", key="b_adeudos_keyup")
+                except ImportError:
+                    busq_adeudos = st.text_input("🔍 Buscar deudor, vendedor o producto...", placeholder="Escribe para filtrar la lista...")
+
+                if busq_adeudos:
+                    str_b = str(busq_adeudos).lower()
+                    df_adeudos = df_adeudos[
+                        df_adeudos["Cliente"].astype(str).str.lower().str.contains(str_b) |
+                        df_adeudos["Nombre_Vendedor"].astype(str).str.lower().str.contains(str_b) |
+                        df_adeudos["Producto"].astype(str).str.lower().str.contains(str_b)
+                    ]
+                    
+                if df_adeudos.empty:
+                    st.warning("No se encontraron adeudos que coincidan con la búsqueda.")
+                else:
+                    # Sort initially by days since last payment descending
+                    df_adeudos = df_adeudos.sort_values(by="Dias_Ultimo_Abono", ascending=False)
                 
                 def highlight_deudas(row):
                     dias = row["Dias_Ultimo_Abono"]
