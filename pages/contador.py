@@ -29,20 +29,7 @@ def show():
     if not df_gastos_full.empty:
         df_gastos_full['Fecha'] = pd.to_datetime(df_gastos_full['Fecha'], dayfirst=True, errors='coerce')
 
-    # =================================================================
-    # BLOQUE 1: APERTURA (CONGELAMIENTO HISTÓRICO)
-    # =================================================================
-    st.markdown("## 🏛️ Capital Fijo y Apertura (Bloque Histórico)")
-    st.markdown("*Datos congelados anteriores al 1 de Mayo. Constituyen tu base de inversión y cartera vencida de entrada.*")
-    
-    # 3. Flujo Histórico y Pasivos
-    df_gastos_viejos = df_gastos_full[df_gastos_full['Fecha'] < FECHA_CORTE] if not df_gastos_full.empty else pd.DataFrame()
-    gastos_viejos_total = df_gastos_viejos['Monto'].sum() if not df_gastos_viejos.empty else 0.0
-    
-    st.metric("📉 Gastos Históricos (Quemado)", f"${gastos_viejos_total:,.2f}",
-              help="Suma de combustible, viáticos y mermas quemados previo a este arranque.")
 
-    st.markdown("---")
 
     # =================================================================
     # BLOQUE 2: OPERACIÓN VIGENTE (POST-MAYO)
