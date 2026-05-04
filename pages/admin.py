@@ -845,6 +845,8 @@ def show():
             st.markdown("📸 **Evidencia / Ticket (Opcional)**")
             
             foto_archivo = st.file_uploader("Subir foto o capturar con Cámara (Alta Calidad)", type=["jpg", "png", "jpeg"])
+            factura_xml = st.file_uploader("Subir Factura (XML)", type=["xml"])
+            factura_pdf = st.file_uploader("Subir Factura (PDF)", type=["pdf"])
             
             guardar_g = st.button("Guardar Gasto", type="primary")
             
@@ -872,8 +874,11 @@ def show():
                         except:
                             # Si pillo un error inesperado de compresion, subo los bytes orginales
                             foto_final = raw_bytes
+                            
+                    xml_bytes = factura_xml.getvalue() if factura_xml else None
+                    pdf_bytes = factura_pdf.getvalue() if factura_pdf else None
                         
-                    exito, msj = db.registrar_gasto(concepto_g, monto_g, cat_g, None, foto_final)
+                    exito, msj = db.registrar_gasto(concepto_g, monto_g, cat_g, None, foto_final, xml_bytes, pdf_bytes)
                     if exito:
                         st.success(msj)
                         st.rerun()
