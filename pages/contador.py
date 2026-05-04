@@ -91,21 +91,31 @@ def show():
         df_an_filt = df_abonos_nuevos.copy()
 
     # Cálculo Global Vigente
-    total_gastos_opex = df_gn_filt['Monto'].sum() if not df_gn_filt.empty else 0.0
+    if not df_gn_filt.empty:
+        df_gn_filt['Tiene_Factura'] = df_gn_filt['Tiene_XML'] | df_gn_filt['Tiene_PDF']
+        mask_con_factura = df_gn_filt['Tiene_Factura'] == True
+        total_gastos_con_factura = df_gn_filt.loc[mask_con_factura, 'Monto'].sum()
+        total_gastos_sin_factura = df_gn_filt.loc[~mask_con_factura, 'Monto'].sum()
+    else:
+        total_gastos_con_factura = 0.0
+        total_gastos_sin_factura = 0.0
 
     # CÁLCULO DE IVA POR FLUJO DE EFECTIVO (NUEVO REQUERIMIENTO)
     total_efectivo_cobrado = df_an_filt['monto_abono'].sum() if not df_an_filt.empty else 0.0
     iva_flujo = (total_efectivo_cobrado / 1.16) * 0.16 if total_efectivo_cobrado > 0 else 0.0
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("💳 Flujo Total Cobrado (Abonos)", f"${total_efectivo_cobrado:,.2f}", 
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("💳 Flujo Cobrado (Abonos)", f"${total_efectivo_cobrado:,.2f}", 
               help="Dinero real nuevo depositado este mes.")
               
-    c2.metric("🔴 IVA Causado SAT (16% de Flujo)", f"${iva_flujo:,.2f}", 
+    c2.metric("🔴 IVA Causado SAT", f"${iva_flujo:,.2f}", 
               help="[EXTRACCION LEGAL]: El SAT exige el IVA solo de los depósitos bancarios reales. Esta fórmula extrae el 16% de todos los Abonos cobrados en esta ventana.")
               
-    c3.metric("📉 Gastos (OPEX)", f"-${total_gastos_opex:,.2f}", 
-              help="Mermas operacionales extraídas del mes.")
+    c3.metric("📉 OPEX (Con Factura)", f"-${total_gastos_con_factura:,.2f}", 
+              help="Gastos deducibles que cuentan con comprobante XML/PDF.")
+              
+    c4.metric("📉 OPEX (Sin Factura)", f"-${total_gastos_sin_factura:,.2f}", 
+              help="Gastos internos o sin comprobante fiscal.")
 
     st.markdown("---")
     
@@ -142,3 +152,50 @@ def show():
         st.dataframe(df_mostrar, width="stretch", height=500)
     else:
         st.caption("Aún no hay abonos descargables en la franja operativa actual.")
+        
+    st.markdown("---")
+    
+    # =================================================================
+    # DESCARGA DE FACTURAS (XML / PDF)
+    # =================================================================
+    st.markdown("### 📥 Descarga de Facturas de Gastos")
+    st.markdown("Facturas adjuntas a los gastos operativos en el periodo seleccionado.")
+    
+    if not df_gn_filt.empty:
+        df_facturas = df_gn_filt[df_gn_filt['Tiene_Factura'] == True]
+        if not df_facturas.empty:
+            st.info(f"Se encontraron {len(df_facturas)} gastos con factura.")
+            
+            # Botón de Descarga Masiva (ZIP)
+            import zipfile
+            import io
+            
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+                for _, row in df_facturas.iterrows():
+                    prefix = f"gasto_{row['ID']}_{str(row['Fecha']).replace(':', '').replace(' ', '_').replace('-', '')}"
+                    if row['Tiene_XML'] and row['XML_Bytes']:
+                        zip_file.writestr(f"{prefix}.xml", row['XML_Bytes'])
+                    if row['Tiene_PDF'] and row['PDF_Bytes']:
+                        zip_file.writestr(f"{prefix}.pdf", row['PDF_Bytes'])
+            
+            st.download_button(
+                label="📦 Descargar Todas las Facturas (ZIP)",
+                data=zip_buffer.getvalue(),
+                file_name=f"Facturas_Gastos_Periodo.zip",
+                mime="application/zip",
+                type="primary"
+            )
+            
+            st.markdown("#### Descarga Individual")
+            for _, row in df_facturas.iterrows():
+                with st.expander(f"Gasto #{row['ID']} - {row['Concepto']} (${row['Monto']:,.2f})"):
+                    cols = st.columns(2)
+                    if row['Tiene_XML'] and row['XML_Bytes']:
+                        cols[0].download_button("📄 Descargar XML", data=row['XML_Bytes'], file_name=f"gasto_{row['ID']}.xml", mime="application/xml", key=f"xml_{row['ID']}")
+                    if row['Tiene_PDF'] and row['PDF_Bytes']:
+                        cols[1].download_button("📄 Descargar PDF", data=row['PDF_Bytes'], file_name=f"gasto_{row['ID']}.pdf", mime="application/pdf", key=f"pdf_{row['ID']}")
+        else:
+            st.caption("No hay gastos con factura (XML/PDF) en este periodo.")
+    else:
+        st.caption("No hay gastos registrados en este periodo.")
