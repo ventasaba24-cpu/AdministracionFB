@@ -150,7 +150,7 @@ def show():
                 opciones_cantidad = list(range(1, min(51, limite_cantidad + 1)))
                 cantidad = st.selectbox("📦 Cantidad a vender", opciones_cantidad)
                 
-                precio = st.number_input("💵 Precio Unitario Final ($)", min_value=0.0, step=50.0, format="%.2f", value=precio_def, key=f"precio_venta_input")
+                precio = st.number_input("💵 Precio Unitario Final ($)", min_value=0.0, step=50.0, format="%.2f", value=precio_def, key=f"precio_venta_input_{producto}")
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 tipo_v = st.session_state.get("user_tipo_vendedor", "Crédito")
