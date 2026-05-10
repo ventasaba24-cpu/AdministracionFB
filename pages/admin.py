@@ -709,6 +709,98 @@ def show():
                             st.markdown("Revisa el archivo `.streamlit/secrets.toml`.")
                     else:
                         st.error(f"Error al registrar en la base de datos: {msj_db}")
+                        
+        st.markdown("---")
+        st.subheader("🛒 Registrar Venta a Nombre de Vendedor")
+        st.markdown("Registra una venta simulando estar en la cuenta del vendedor para afectar directamente sus métricas.")
+        
+        vendedores_activos = db.obtener_vendedores()
+        if not vendedores_activos.empty:
+            lista_vendedores = ["Selecciona un vendedor..."] + vendedores_activos["email"].tolist()
+            vendedor_seleccionado = st.selectbox("Seleccionar Vendedor:", lista_vendedores)
+            
+            if vendedor_seleccionado != "Selecciona un vendedor...":
+                vendedor_info = vendedores_activos[vendedores_activos["email"] == vendedor_seleccionado].iloc[0]
+                vendedor_nombre = vendedor_info.get("nombre", vendedor_seleccionado)
+                vendedor_tipo = vendedor_info.get("tipo", "Crédito")
+                vendedor_comision = float(vendedor_info.get("comision", 10.0)) / 100.0
+                
+                st.info(f"Modo Representante Activo: Estás registrando a nombre de **{vendedor_nombre}** ({vendedor_tipo}).")
+                
+                df_inv_vendedor = db.leer_inventario(vendedor_email=vendedor_seleccionado)
+                
+                opc_inv = []
+                p_dict = {}
+                s_dict = {}
+                c_ok_dict = {}
+                
+                if not df_inv_vendedor.empty:
+                    for _, r in df_inv_vendedor.iterrows():
+                        if int(r['stock']) > 0:
+                            n_prod = r['nombre']
+                            c_val = float(r.get('costo_compra', 0.0))
+                            if n_prod not in opc_inv:
+                                opc_inv.append(n_prod)
+                                p_dict[n_prod] = float(r['precio'])
+                                s_dict[n_prod] = int(r['stock'])
+                                c_ok_dict[n_prod] = (c_val > 0)
+                            else:
+                                s_dict[n_prod] += int(r['stock'])
+                                if c_val > 0:
+                                    c_ok_dict[n_prod] = True
+                                    
+                if not opc_inv:
+                    st.warning(f"⚠️ {vendedor_nombre} no cuenta con stock disponible en su almacén personal.")
+                else:
+                    prod_sel = st.selectbox(
+                        f"Producto del inventario de {vendedor_nombre}", 
+                        opc_inv,
+                        index=None,
+                        placeholder="Elige un producto..."
+                    )
+                    
+                    if prod_sel and prod_sel in s_dict:
+                        st.caption(f"📦 Stock disponible: **{s_dict[prod_sel]}** unidades.")
+                        l_cant = s_dict[prod_sel]
+                        p_def = p_dict[prod_sel]
+                    else:
+                        l_cant = 1000
+                        p_def = 0.0
+                        
+                    with st.form("venta_admin_form", clear_on_submit=False):
+                        st.markdown("### 📝 Datos de Venta")
+                        cl_name = st.text_input("👤 Nombre Completo del Cliente", placeholder="Ej: Maria Lopez")
+                        
+                        opc_c = list(range(1, min(51, l_cant + 1)))
+                        cant_sel = st.selectbox("📦 Cantidad a vender", opc_c)
+                        
+                        pr_sel = st.number_input("💵 Precio Unitario Final ($)", min_value=0.0, step=50.0, format="%.2f", value=p_def, key=f"p_venta_admin_{prod_sel}")
+                        
+                        pagado_chk = False
+                        if vendedor_tipo == "One-Shot":
+                            st.info("🎟️ Este vendedor es One-Shot. La venta se registrará automáticamente como liquidada al contado.")
+                            pagado_chk = True
+                            
+                        submit_va = st.form_submit_button("Registrar Venta a Nombre del Vendedor")
+                        
+                        if submit_va:
+                            if not cl_name:
+                                st.error("El nombre del cliente es obligatorio.")
+                            elif not prod_sel:
+                                st.error("Por favor selecciona un producto.")
+                            elif prod_sel in c_ok_dict and not c_ok_dict[prod_sel]:
+                                st.error("❌ Este producto no tiene el costo configurado correctamente.")
+                            else:
+                                ok_v, id_v_new, mto = db.registrar_venta(vendedor_seleccionado, cl_name, prod_sel, cant_sel, pr_sel)
+                                if ok_v:
+                                    st.success(f"Venta #{id_v_new} registrada exitosamente a nombre de {vendedor_nombre}.")
+                                    if pagado_chk:
+                                        db.registrar_abono(id_v_new, mto, "Efectivo")
+                                        st.info(f"Abono auto-registrado. Comisión: ${(mto * vendedor_comision):,.2f} MXN.")
+                                else:
+                                    st.error("Error al registrar la venta en la base de datos.")
+        else:
+            st.info("Aún no tienes vendedores registrados en el sistema.")
 
     with tab5:
         st.subheader("🕵️ Buscador Inteligente para Correcciones")
