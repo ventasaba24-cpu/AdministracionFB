@@ -112,79 +112,11 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
     # Migración silenciosa de SQLite para no molestar al usuario con comandos manuales
     if "sqlite" in db_path:
         engine = create_engine(db_path, connect_args={"check_same_thread": False})
-        try:
-             with engine.connect() as conn:
-                 conn.execute(text("ALTER TABLE ventas ADD COLUMN fecha_cobro_comision DATETIME"))
-                 conn.execute(text("UPDATE ventas SET fecha_cobro_comision = fecha_venta WHERE comision_cobrada = 1 AND fecha_cobro_comision IS NULL"))
-                 conn.commit()
-        except:
-             pass # Ya existe
-             
-        try:
-             with engine.connect() as conn:
-                 conn.execute(text("ALTER TABLE usuarios ADD COLUMN patrocinador_email VARCHAR(100)"))
-                 conn.commit()
-        except:
-             pass
-        try:
-             with engine.connect() as conn:
-                 conn.execute(text("ALTER TABLE usuarios ADD COLUMN tipo_vendedor VARCHAR(50) DEFAULT 'Crédito'"))
-                 conn.commit()
-        except:
-             pass
-             
-        try:
-             with engine.connect() as conn:
-                 conn.execute(text("ALTER TABLE usuarios ADD COLUMN session_token VARCHAR(100)"))
-                 conn.commit()
-        except:
-             pass
-             
-        try:
-             with engine.connect() as conn:
-                 conn.execute(text("UPDATE usuarios SET patrocinador_email = (SELECT email FROM usuarios WHERE rol = 'Admin' ORDER BY id ASC LIMIT 1) WHERE patrocinador_email IS NULL AND rol != 'Admin'"))
-                 conn.commit()
-        except:
-             pass
     else:
         # Entorno PostgreSQL (Nube Supabase)
         engine = create_engine(db_path, pool_pre_ping=True, pool_size=5, max_overflow=10)
-        try:
-             with engine.connect() as conn:
-                 conn.execute(text("ALTER TABLE ventas ADD COLUMN fecha_cobro_comision TIMESTAMP"))
-                 conn.execute(text("UPDATE ventas SET fecha_cobro_comision = fecha_venta WHERE comision_cobrada = true AND fecha_cobro_comision IS NULL"))
-                 conn.commit()
-        except:
-             pass # Ya existe la columna
-             
-        try:
-             with engine.connect() as conn:
-                 conn.execute(text("ALTER TABLE usuarios ADD COLUMN patrocinador_email VARCHAR(100)"))
-                 conn.commit()
-        except:
-             pass
-        try:
-             with engine.connect() as conn:
-                 conn.execute(text("ALTER TABLE usuarios ADD COLUMN tipo_vendedor VARCHAR(50) DEFAULT 'Crédito'"))
-                 conn.commit()
-        except:
-             pass
-             
-        try:
-             with engine.connect() as conn:
-                 conn.execute(text("ALTER TABLE usuarios ADD COLUMN session_token VARCHAR(100)"))
-                 conn.commit()
-        except:
-             pass
-             
-        try:
-             with engine.connect() as conn:
-                 conn.execute(text("UPDATE usuarios SET patrocinador_email = (SELECT email FROM usuarios WHERE rol = 'Admin' ORDER BY id ASC LIMIT 1) WHERE patrocinador_email IS NULL AND rol != 'Admin'"))
-                 conn.commit()
-        except:
-             pass
         
-        # Falla #5: INDEXACIÓN EXTREMA (Velocidad Operacional y Búsquedas O(log n))
+        # INDEXACIÓN EXTREMA (Velocidad Operacional y Búsquedas O(log n))
         try:
              with engine.connect() as conn:
                  conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ventas_vendedor ON ventas(vendedor_email)"))
