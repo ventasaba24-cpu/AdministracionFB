@@ -548,6 +548,46 @@ def show():
             st.info("💡 La inteligencia de compras aparecerá aquí en cuanto registres tus primeras ventas.")
             
         st.markdown("---")
+        with st.expander("📋 Ver Lista Completa de Inventario (Todos los vendedores)"):
+            if not df_inv_global.empty:
+                from database import Usuario
+                session = db.get_session()
+                vendedores_dict = {v.email: v.nombre for v in session.query(Usuario).filter_by(rol="Vendedor").all()}
+                session.close()
+                
+                df_inv_global["Nombre_Vendedor"] = df_inv_global["vendedor_email"].map(vendedores_dict).fillna("Vendedor Desconocido")
+                df_sorted = df_inv_global.sort_values(by=["Nombre_Vendedor", "nombre"])
+                
+                html_list = """
+                <div style="max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0px;">
+                    <table style="width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px;">
+                        <thead style="position: sticky; top: 0; background-color: #f1f5f9; z-index: 1;">
+                            <tr style="text-align: left;">
+                                <th style="padding: 10px; border-bottom: 2px solid #cbd5e1;">👤 Vendedor</th>
+                                <th style="padding: 10px; border-bottom: 2px solid #cbd5e1;">🧪 Producto</th>
+                                <th style="padding: 10px; border-bottom: 2px solid #cbd5e1;">📦 Cantidad</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                """
+                for _, row in df_sorted.iterrows():
+                    html_list += f"""
+                            <tr style="border-bottom: 1px solid #e2e8f0;">
+                                <td style="padding: 10px; color: #475569;">{row['Nombre_Vendedor']}</td>
+                                <td style="padding: 10px; font-weight: 500;">{row['nombre']}</td>
+                                <td style="padding: 10px; font-weight: bold; color: #3b82f6;">{row['stock']}</td>
+                            </tr>
+                    """
+                html_list += """
+                        </tbody>
+                    </table>
+                </div>
+                """
+                st.markdown(html_list, unsafe_allow_html=True)
+            else:
+                st.info("No hay inventario registrado en el sistema.")
+                
+        st.markdown("---")
         st.subheader("📦 Actualizar Inventario por Vendedor")
         st.info("Asigna productos, precios y stock específico a cada vendedor/a.")
         
