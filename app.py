@@ -28,19 +28,29 @@ def verificar_geo_bloqueo():
                     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                     with urllib.request.urlopen(req, timeout=3) as response:
                         data = json.loads(response.read().decode())
-                        if data.get("status") == "success" and data.get("countryCode") != "MX":
+                        # ATENCION: Cambiado temporalmente a == "MX" para que tú mismo puedas ver el error desde México.
+                        # Cuando acabes de probarlo, cambiaremos esto de nuevo a != "MX"
+                        if data.get("status") == "success" and data.get("countryCode") == "MX":
                             st.session_state.geo_bloqueado = True
         except Exception:
-            # Opción B (Acceso Flexible): Si la API falla o hay timeout, no bloqueamos (Fail-Open)
             pass
             
         st.session_state.geo_validado = True
 
     if st.session_state.geo_bloqueado:
-        st.markdown("<h1 style='text-align: center; color: #ef4444;'>🛑 ACCESO DENEGADO</h1>", unsafe_allow_html=True)
-        st.markdown("<h3 style='text-align: center; color: #475569;'>Restricción Geográfica</h3>", unsafe_allow_html=True)
-        st.error("Por motivos de seguridad corporativa, el acceso a este ERP está restringido exclusivamente a dispositivos y redes operando dentro del territorio de **México**.")
-        st.info("Su intento de conexión internacional ha sido bloqueado. Si cree que esto es un error, por favor contacte al Administrador y verifique que no está utilizando una VPN (Virtual Private Network).")
+        # Inyectamos CSS para ocultar TODO el diseño de Streamlit
+        st.markdown("""
+        <style>
+            #MainMenu {visibility: hidden;}
+            header {visibility: hidden;}
+            footer {visibility: hidden;}
+            .stApp {background-color: white;}
+            .block-container {padding-top: 1rem; max-width: 100%;}
+        </style>
+        <div style="font-family: monospace; font-size: 24px; font-weight: bold; margin-bottom: 10px;">404 Not Found</div>
+        <div style="font-family: monospace; font-size: 14px; text-align: left;">nginx/1.18.0 (Ubuntu)</div>
+        <hr style="border: 0; border-top: 1px solid #ccc; margin-top: 5px;">
+        """, unsafe_allow_html=True)
         st.stop()
 
 # Ejecutar la barrera de seguridad de inmediato
