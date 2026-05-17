@@ -556,29 +556,53 @@ def show():
                 session.close()
                 
                 df_inv_global["Nombre_Vendedor"] = df_inv_global["vendedor_email"].map(vendedores_dict).fillna("Vendedor Desconocido")
-                df_sorted = df_inv_global.sort_values(by=["Nombre_Vendedor", "nombre"])
                 
-                html_list = "<div style='max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0px;'>"
-                html_list += "<table style='width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px;'>"
-                html_list += "<thead style='position: sticky; top: 0; background-color: #f1f5f9; z-index: 1;'>"
-                html_list += "<tr style='text-align: left;'>"
-                html_list += "<th style='padding: 10px; border-bottom: 2px solid #cbd5e1;'>👤 Vendedor</th>"
-                html_list += "<th style='padding: 10px; border-bottom: 2px solid #cbd5e1;'>🧪 Producto</th>"
-                html_list += "<th style='padding: 10px; border-bottom: 2px solid #cbd5e1;'>📦 Cantidad</th>"
-                html_list += "</tr></thead><tbody>"
+                df_inv_global["stock"] = pd.to_numeric(df_inv_global["stock"], errors="coerce").fillna(0)
+                df_activos = df_inv_global[df_inv_global["stock"] > 0]
                 
-                for _, row in df_sorted.iterrows():
-                    html_list += "<tr style='border-bottom: 1px solid #e2e8f0;'>"
-                    html_list += f"<td style='padding: 10px; color: #475569;'>{row['Nombre_Vendedor']}</td>"
-                    html_list += f"<td style='padding: 10px; font-weight: 500;'>{row['nombre']}</td>"
-                    html_list += f"<td style='padding: 10px; font-weight: bold; color: #3b82f6;'>{row['stock']}</td>"
+                if df_activos.empty:
+                    st.info("No hay inventario físico mayor a 0 registrado en la red.")
+                else:
+                    df_sorted = df_activos.sort_values(by=["Nombre_Vendedor", "nombre"])
+                    
+                    html_list = "<div style='max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0px;'>"
+                    html_list += "<table style='width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 14px;'>"
+                    html_list += "<thead style='position: sticky; top: 0; background-color: #f1f5f9; z-index: 1;'>"
+                    html_list += "<tr style='text-align: left;'>"
+                    html_list += "<th style='padding: 10px; border-bottom: 2px solid #cbd5e1;'>👤 Vendedor</th>"
+                    html_list += "<th style='padding: 10px; border-bottom: 2px solid #cbd5e1;'>🧪 Producto</th>"
+                    html_list += "<th style='padding: 10px; border-bottom: 2px solid #cbd5e1;'>📦 Cantidad</th>"
+                    html_list += "</tr></thead><tbody>"
+                    
+                    gran_total = 0
+                    vendedores_agrupados = df_sorted.groupby("Nombre_Vendedor")
+                    
+                    for vendedor, df_vendedor in vendedores_agrupados:
+                        subtotal_vendedor = 0
+                        for _, row in df_vendedor.iterrows():
+                            stock_num = int(row['stock'])
+                            subtotal_vendedor += stock_num
+                            html_list += "<tr style='border-bottom: 1px solid #e2e8f0;'>"
+                            html_list += f"<td style='padding: 10px; color: #475569;'>{vendedor}</td>"
+                            html_list += f"<td style='padding: 10px; font-weight: 500;'>{row['nombre']}</td>"
+                            html_list += f"<td style='padding: 10px; font-weight: bold; color: #3b82f6;'>{stock_num}</td>"
+                            html_list += "</tr>"
+                            
+                        html_list += "<tr style='background-color: #f8fafc; border-bottom: 2px solid #cbd5e1;'>"
+                        html_list += f"<td colspan='2' style='padding: 10px; text-align: right; font-weight: bold; color: #64748b;'>Subtotal {vendedor}:</td>"
+                        html_list += f"<td style='padding: 10px; font-weight: bold; color: #0f172a;'>{subtotal_vendedor}</td>"
+                        html_list += "</tr>"
+                        
+                        gran_total += subtotal_vendedor
+                        
+                    html_list += "<tr style='background-color: #e2e8f0; position: sticky; bottom: 0; z-index: 1;'>"
+                    html_list += "<td colspan='2' style='padding: 12px; text-align: right; font-weight: 800; font-size: 15px; color: #0f172a;'>TOTAL INVENTARIO GLOBAL:</td>"
+                    html_list += f"<td style='padding: 12px; font-weight: 900; font-size: 16px; color: #1d4ed8;'>{gran_total} pzs</td>"
                     html_list += "</tr>"
                     
-                html_list += "</tbody></table></div>"
-                
-                st.markdown(html_list, unsafe_allow_html=True)
-            else:
-                st.info("No hay inventario registrado en el sistema.")
+                    html_list += "</tbody></table></div>"
+                    
+                    st.markdown(html_list, unsafe_allow_html=True)
                 
         st.markdown("---")
         st.subheader("📦 Actualizar Inventario por Vendedor")
