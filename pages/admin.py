@@ -491,7 +491,6 @@ def show():
         st.subheader("💡 Inteligencia de Compras y Rotación")
         
         if not df_todas.empty:
-            import pandas as pd
             import datetime
             
             df_ventas_rot = df_todas.copy()
