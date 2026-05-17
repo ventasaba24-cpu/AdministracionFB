@@ -16,38 +16,41 @@ import json
 import ipaddress
 
 def verificar_geo_bloqueo():
-    if "geo_validado_3" not in st.session_state:
-        st.session_state.geo_bloqueado = False
-        try:
-            if hasattr(st, 'context') and hasattr(st.context, 'headers'):
-                headers = st.context.headers
-                ip_list = headers.get("X-Forwarded-For", "127.0.0.1").split(",")
-                
-                # Buscar la primera IP que sea VERDADERAMENTE pública (ignorar 192.168, 10.x.x, etc)
-                client_ip = None
-                for ip in ip_list:
-                    ip_str = ip.strip()
-                    try:
-                        parsed_ip = ipaddress.ip_address(ip_str)
-                        if not parsed_ip.is_private and not parsed_ip.is_loopback:
-                            client_ip = ip_str
-                            break
-                    except ValueError:
-                        continue
-                        
-                # Si no hay IP publica (ej. testing local puro), la ignoramos
-                if client_ip:
-                    url = f"http://ip-api.com/json/{client_ip}?fields=status,countryCode"
-                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=3) as response:
-                        data = json.loads(response.read().decode())
-                        # ATENCION: Sigue configurado en == "MX" para que lo pruebes.
-                        if data.get("status") == "success" and data.get("countryCode") == "MX":
-                            st.session_state.geo_bloqueado = True
-        except Exception:
-            pass
+    st.session_state.geo_bloqueado = False
+    try:
+        if hasattr(st, 'context') and hasattr(st.context, 'headers'):
+            headers = dict(st.context.headers)
             
-        st.session_state.geo_validado_3 = True
+            # DEBUG: Mostrar TODOS los headers ocultos en pantalla
+            st.error(f"DEBUG -> Headers recibidos: {headers}")
+            
+            ip_list_str = headers.get("X-Forwarded-For", headers.get("X-Real-Ip", "127.0.0.1"))
+            ip_list = ip_list_str.split(",")
+            
+            client_ip = None
+            for ip in ip_list:
+                ip_str = ip.strip()
+                try:
+                    parsed_ip = ipaddress.ip_address(ip_str)
+                    if not parsed_ip.is_private and not parsed_ip.is_loopback:
+                        client_ip = ip_str
+                        break
+                except ValueError:
+                    continue
+                    
+            st.error(f"DEBUG -> IP Publica detectada: {client_ip}")
+            
+            if client_ip:
+                url = f"http://ip-api.com/json/{client_ip}?fields=status,countryCode"
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=3) as response:
+                    data = json.loads(response.read().decode())
+                    st.error(f"DEBUG -> Satelite: {data}")
+                    if data.get("status") == "success" and data.get("countryCode") == "MX":
+                        st.session_state.geo_bloqueado = True
+    except Exception as e:
+        st.error(f"DEBUG -> Excepcion: {e}")
+        pass
 
     if st.session_state.geo_bloqueado:
         # Inyectamos CSS para ocultar TODO el diseño de Streamlit y simular página caída
