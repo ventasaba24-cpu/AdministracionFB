@@ -488,7 +488,68 @@ def show():
             st.info("No hay ventas registradas aún.")
 
     with tab2:
-        st.subheader("Actualizar Inventario por Vendedor")
+        st.subheader("💡 Inteligencia de Compras y Rotación")
+        
+        if not df_todas.empty:
+            import pandas as pd
+            import datetime
+            
+            df_ventas_rot = df_todas.copy()
+            df_ventas_rot['Fecha_Venta'] = pd.to_datetime(df_ventas_rot['Fecha_Venta'], errors='coerce')
+            
+            agrupado_ventas = df_ventas_rot.groupby("Producto").agg(
+                Unidades_Vendidas=("Cantidad", "sum"),
+                Primera_Venta=("Fecha_Venta", "min")
+            ).reset_index()
+            
+            hoy = pd.to_datetime(datetime.datetime.now())
+            agrupado_ventas["Dias_Vida"] = (hoy - agrupado_ventas["Primera_Venta"]).dt.days
+            agrupado_ventas["Dias_Vida"] = agrupado_ventas["Dias_Vida"].apply(lambda x: 1 if pd.isna(x) or x <= 0 else x)
+            
+            agrupado_ventas["Rotacion_Semanal"] = (agrupado_ventas["Unidades_Vendidas"] / agrupado_ventas["Dias_Vida"]) * 7
+            
+            df_inv_global = db.leer_inventario()
+            stock_agrupado = pd.DataFrame(columns=["nombre", "stock"])
+            if not df_inv_global.empty:
+                df_inv_global["stock"] = pd.to_numeric(df_inv_global["stock"], errors="coerce").fillna(0)
+                stock_agrupado = df_inv_global.groupby("nombre")["stock"].sum().reset_index()
+            
+            df_inteligencia = pd.merge(agrupado_ventas, stock_agrupado, left_on="Producto", right_on="nombre", how="left")
+            df_inteligencia["stock"] = df_inteligencia["stock"].fillna(0)
+            
+            top_rotacion = df_inteligencia.sort_values(by="Rotacion_Semanal", ascending=False).head(3)
+            alertas_quiebre = df_inteligencia[(df_inteligencia["Rotacion_Semanal"] > 0.5) & (df_inteligencia["stock"] <= 1)].sort_values(by="Rotacion_Semanal", ascending=False).head(3)
+            lentos = df_inteligencia[(df_inteligencia["stock"] > 0) & (df_inteligencia["Rotacion_Semanal"] < 0.2) & (df_inteligencia["Dias_Vida"] >= 15)].sort_values(by="Rotacion_Semanal", ascending=True).head(3)
+            
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown("##### 🌪️ Alta Rotación")
+                if not top_rotacion.empty:
+                    for _, r in top_rotacion.iterrows():
+                        st.success(f"**{r['Producto']}**  \nVendidos: {int(r['Unidades_Vendidas'])} | Rota: **{r['Rotacion_Semanal']:.1f}/sem**")
+                else:
+                    st.caption("Aún no hay datos suficientes.")
+                    
+            with c2:
+                st.markdown("##### 🚨 Alertas Quiebre")
+                if not alertas_quiebre.empty:
+                    for _, r in alertas_quiebre.iterrows():
+                        st.error(f"**{r['Producto']}**  \nStock Global: **{int(r['stock'])} pzs** | Rota: {r['Rotacion_Semanal']:.1f}/sem")
+                else:
+                    st.info("Todo tu stock está sano.")
+                    
+            with c3:
+                st.markdown("##### 🐢 Inventario Lento")
+                if not lentos.empty:
+                    for _, r in lentos.iterrows():
+                        st.warning(f"**{r['Producto']}**  \nEstancado: **{int(r['stock'])} pzs** | Rota: {r['Rotacion_Semanal']:.2f}/sem")
+                else:
+                    st.info("No hay inventario rezagado.")
+        else:
+            st.info("💡 La inteligencia de compras aparecerá aquí en cuanto registres tus primeras ventas.")
+            
+        st.markdown("---")
+        st.subheader("📦 Actualizar Inventario por Vendedor")
         st.info("Asigna productos, precios y stock específico a cada vendedor/a.")
         
         from database import Usuario
