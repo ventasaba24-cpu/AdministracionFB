@@ -15,7 +15,7 @@ import urllib.request
 import json
 
 def verificar_geo_bloqueo():
-    if "geo_validado" not in st.session_state:
+    if "geo_validado_2" not in st.session_state:
         st.session_state.geo_bloqueado = False
         try:
             if hasattr(st, 'context') and hasattr(st.context, 'headers'):
@@ -35,7 +35,7 @@ def verificar_geo_bloqueo():
         except Exception:
             pass
             
-        st.session_state.geo_validado = True
+        st.session_state.geo_validado_2 = True
 
     if st.session_state.geo_bloqueado:
         # Inyectamos CSS para ocultar TODO el diseño de Streamlit
