@@ -16,59 +16,10 @@ import json
 import ipaddress
 
 def verificar_geo_bloqueo():
-    st.session_state.geo_bloqueado = False
-    try:
-        if hasattr(st, 'context') and hasattr(st.context, 'headers'):
-            headers = dict(st.context.headers)
-            
-            # DEBUG: Mostrar TODOS los headers ocultos en pantalla
-            st.error(f"DEBUG -> Headers recibidos: {headers}")
-            
-            ip_list_str = headers.get("X-Forwarded-For", headers.get("X-Real-Ip", "127.0.0.1"))
-            ip_list = ip_list_str.split(",")
-            
-            client_ip = None
-            for ip in ip_list:
-                ip_str = ip.strip()
-                try:
-                    parsed_ip = ipaddress.ip_address(ip_str)
-                    if not parsed_ip.is_private and not parsed_ip.is_loopback:
-                        client_ip = ip_str
-                        break
-                except ValueError:
-                    continue
-                    
-            st.error(f"DEBUG -> IP Publica detectada: {client_ip}")
-            
-            if client_ip:
-                url = f"http://ip-api.com/json/{client_ip}?fields=status,countryCode"
-                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=3) as response:
-                    data = json.loads(response.read().decode())
-                    st.error(f"DEBUG -> Satelite: {data}")
-                    if data.get("status") == "success" and data.get("countryCode") == "MX":
-                        st.session_state.geo_bloqueado = True
-    except Exception as e:
-        st.error(f"DEBUG -> Excepcion: {e}")
-        pass
+    # Streamlit Cloud enmascara la IP pública en su capa de WebSockets
+    # Implementación suspendida temporalmente
+    pass
 
-    if st.session_state.geo_bloqueado:
-        # Inyectamos CSS para ocultar TODO el diseño de Streamlit y simular página caída
-        st.markdown("""
-        <style>
-            #MainMenu {visibility: hidden;}
-            header {visibility: hidden;}
-            footer {visibility: hidden;}
-            .stApp {background-color: white;}
-            .block-container {padding-top: 1rem; max-width: 100%;}
-        </style>
-        <div style="font-family: monospace; font-size: 24px; font-weight: bold; margin-bottom: 10px;">404 Not Found</div>
-        <div style="font-family: monospace; font-size: 14px; text-align: left;">nginx/1.18.0 (Ubuntu)</div>
-        <hr style="border: 0; border-top: 1px solid #ccc; margin-top: 5px;">
-        """, unsafe_allow_html=True)
-        st.stop()
-
-# Ejecutar la barrera de seguridad de inmediato
 verificar_geo_bloqueo()
 
 # Custom CSS basico para mejorar el look en celulares especialmente
