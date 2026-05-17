@@ -15,27 +15,28 @@ import urllib.request
 import json
 
 def verificar_geo_bloqueo():
-    if "geo_validado_2" not in st.session_state:
-        st.session_state.geo_bloqueado = False
-        try:
-            if hasattr(st, 'context') and hasattr(st.context, 'headers'):
-                headers = st.context.headers
-                ip_list = headers.get("X-Forwarded-For", "127.0.0.1")
-                client_ip = ip_list.split(",")[0].strip()
-                
-                if client_ip not in ["127.0.0.1", "localhost", "::1"]:
-                    url = f"http://ip-api.com/json/{client_ip}?fields=status,countryCode"
-                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=3) as response:
-                        data = json.loads(response.read().decode())
-                        # ATENCION: Cambiado temporalmente a == "MX" para que tú mismo puedas ver el error desde México.
-                        # Cuando acabes de probarlo, cambiaremos esto de nuevo a != "MX"
-                        if data.get("status") == "success" and data.get("countryCode") == "MX":
-                            st.session_state.geo_bloqueado = True
-        except Exception:
-            pass
+    st.session_state.geo_bloqueado = False
+    try:
+        if hasattr(st, 'context') and hasattr(st.context, 'headers'):
+            headers = st.context.headers
+            ip_list = headers.get("X-Forwarded-For", "127.0.0.1")
+            client_ip = ip_list.split(",")[0].strip()
             
-        st.session_state.geo_validado_2 = True
+            st.error(f"DEBUG -> Tu IP es: {client_ip}")
+            
+            if client_ip not in ["127.0.0.1", "localhost", "::1"]:
+                url = f"http://ip-api.com/json/{client_ip}?fields=status,countryCode"
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=3) as response:
+                    data = json.loads(response.read().decode())
+                    st.error(f"DEBUG -> El satelite dice que estas en: {data}")
+                    
+                    if data.get("status") == "success" and data.get("countryCode") == "MX":
+                        st.session_state.geo_bloqueado = True
+        else:
+            st.error("DEBUG -> No tienes acceso a los headers de red.")
+    except Exception as e:
+        st.error(f"DEBUG -> Error de conexión: {str(e)}")
 
     if st.session_state.geo_bloqueado:
         # Inyectamos CSS para ocultar TODO el diseño de Streamlit
