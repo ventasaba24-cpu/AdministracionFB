@@ -11,6 +11,41 @@ st.set_page_config(
     initial_sidebar_state="collapsed" # Es crítico colapsar el menú lateral en celular por defecto para ahorrar y aprovechar pantalla
 )
 
+import urllib.request
+import json
+
+def verificar_geo_bloqueo():
+    if "geo_validado" not in st.session_state:
+        st.session_state.geo_bloqueado = False
+        try:
+            if hasattr(st, 'context') and hasattr(st.context, 'headers'):
+                headers = st.context.headers
+                ip_list = headers.get("X-Forwarded-For", "127.0.0.1")
+                client_ip = ip_list.split(",")[0].strip()
+                
+                if client_ip not in ["127.0.0.1", "localhost", "::1"]:
+                    url = f"http://ip-api.com/json/{client_ip}?fields=status,countryCode"
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=3) as response:
+                        data = json.loads(response.read().decode())
+                        if data.get("status") == "success" and data.get("countryCode") != "MX":
+                            st.session_state.geo_bloqueado = True
+        except Exception:
+            # Opción B (Acceso Flexible): Si la API falla o hay timeout, no bloqueamos (Fail-Open)
+            pass
+            
+        st.session_state.geo_validado = True
+
+    if st.session_state.geo_bloqueado:
+        st.markdown("<h1 style='text-align: center; color: #ef4444;'>🛑 ACCESO DENEGADO</h1>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; color: #475569;'>Restricción Geográfica</h3>", unsafe_allow_html=True)
+        st.error("Por motivos de seguridad corporativa, el acceso a este ERP está restringido exclusivamente a dispositivos y redes operando dentro del territorio de **México**.")
+        st.info("Su intento de conexión internacional ha sido bloqueado. Si cree que esto es un error, por favor contacte al Administrador y verifique que no está utilizando una VPN (Virtual Private Network).")
+        st.stop()
+
+# Ejecutar la barrera de seguridad de inmediato
+verificar_geo_bloqueo()
+
 # Custom CSS basico para mejorar el look en celulares especialmente
 st.markdown("""
 <style>
