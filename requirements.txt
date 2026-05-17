@@ -8,3 +8,4 @@ extra-streamlit-components
 Werkzeug
 streamlit-keyup
 alembic
+fpdf2
