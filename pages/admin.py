@@ -1,6 +1,72 @@
 import streamlit as st
 import pandas as pd
 
+def generar_pdf_inventario(df_inventario, nombre_vendedor):
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        return None
+        
+    import datetime
+    
+    class PDF(FPDF):
+        def header(self):
+            self.set_font("Arial", "B", 16)
+            self.cell(0, 10, "Reporte de Inventario", border=False, ln=True, align="C")
+            self.set_font("Arial", "", 12)
+            self.cell(0, 8, f"Vendedor: {nombre_vendedor}", border=False, ln=True, align="C")
+            fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+            self.cell(0, 8, f"Fecha de emision: {fecha}", border=False, ln=True, align="C")
+            self.ln(5)
+            
+            self.set_font("Arial", "B", 11)
+            self.set_fill_color(200, 220, 255)
+            self.cell(100, 10, "Producto", border=1, fill=True)
+            self.cell(45, 10, "Precio Publico", border=1, align="C", fill=True)
+            self.cell(45, 10, "Cantidad", border=1, align="C", fill=True)
+            self.ln()
+
+        def footer(self):
+            self.set_y(-15)
+            self.set_font("Arial", "I", 8)
+            self.cell(0, 10, f"Pagina {self.page_no()}/{{nb}}", align="C")
+
+    pdf = PDF()
+    pdf.alias_nb_pages()
+    pdf.add_page()
+    pdf.set_font("Arial", "", 10)
+    
+    total_piezas = 0
+    total_valor = 0.0
+    
+    df_activos = df_inventario[pd.to_numeric(df_inventario["stock"], errors="coerce").fillna(0) > 0].copy()
+    if not df_activos.empty:
+        df_activos = df_activos.sort_values(by="nombre")
+        
+        for _, row in df_activos.iterrows():
+            nombre = str(row['nombre'])[:50]
+            precio = float(row['precio'])
+            stock = int(row['stock'])
+            
+            total_piezas += stock
+            total_valor += (precio * stock)
+            
+            # Limpiar caracteres raros que rompen fpdf
+            nombre_ascii = nombre.encode('latin-1', 'replace').decode('latin-1')
+            
+            pdf.cell(100, 8, nombre_ascii, border=1)
+            pdf.cell(45, 8, f"${precio:,.2f}", border=1, align="R")
+            pdf.cell(45, 8, str(stock), border=1, align="C")
+            pdf.ln()
+            
+    pdf.ln(5)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(100, 10, "TOTALES:", border=0, align="R")
+    pdf.cell(45, 10, f"${total_valor:,.2f}", border=0, align="R")
+    pdf.cell(45, 10, f"{total_piezas} pzs", border=0, align="C")
+    
+    return bytes(pdf.output())
+
 @st.dialog("Edición Completa de Venta")
 def dialog_editar_venta(venta_info, df_inventario, db, clientes_existentes=None):
     st.markdown("⚠️ **Cambiarás los detalles de esta venta. El inventario se ajustará automáticamente.**")
@@ -621,8 +687,20 @@ def show():
             df_inventario = db.leer_inventario(vendedor_email=vendedor_sel_email)
             
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("➕ Añadir Nuevo Producto", type="primary", width="stretch"):
-                dialog_gestion_inventario(db, vendedor_sel_email, None)
+            col_add, col_pdf = st.columns(2)
+            with col_add:
+                if st.button("➕ Añadir Nuevo Producto", type="primary", use_container_width=True):
+                    dialog_gestion_inventario(db, vendedor_sel_email, None)
+            with col_pdf:
+                pdf_bytes = generar_pdf_inventario(df_inventario, opciones_vnd[vendedor_sel_email])
+                if pdf_bytes:
+                    st.download_button(
+                        label="📥 Descargar PDF de Inventario",
+                        data=pdf_bytes,
+                        file_name=f"Inventario_{opciones_vnd[vendedor_sel_email].replace(' ', '_')}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
                 
             st.markdown("---")
             if not df_inventario.empty:
