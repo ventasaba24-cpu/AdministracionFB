@@ -12,64 +12,8 @@ st.set_page_config(
 )
 
 import urllib.request
-def verificar_geo_bloqueo():
-    # Solo ejecutar la validacion una vez por sesion
-    if "geo_validado_js" not in st.session_state:
-        st.session_state.geo_bloqueado = False
-        
-        try:
-            from streamlit_javascript import st_javascript
-            
-            # Ejecutamos JS en el navegador para consultar el país (saltando proxies de Streamlit)
-            js_code = """
-            await fetch('https://ipapi.co/json/')
-                .then(response => response.json())
-                .then(data => data.country_code)
-                .catch(error => 'ERROR')
-            """
-            
-            # Mostrar un pequeño loader mientras esperamos (solo tarda ~300ms)
-            with st.spinner("Estableciendo conexión encriptada..."):
-                country_code = st_javascript(js_code)
-                
-            # st_javascript regresa 0 mientras evalúa. Detenemos la UI temporalmente.
-            if country_code == 0:
-                st.stop()
-                
-            # Evaluamos la respuesta
-            if country_code == "ERROR" or not country_code:
-                # Opción B Flexible: Si tiene AdBlocker o falla la red, no bloqueamos
-                st.session_state.geo_bloqueado = False
-            else:
-                # ATENCION: Dejado temporalmente en == "MX" para que lo pruebes desde Mexico
-                if country_code == "MX":
-                    st.session_state.geo_bloqueado = True
-                else:
-                    st.session_state.geo_bloqueado = False
-                    
-        except ImportError:
-            # Si no está instalada la librería en desarrollo local, dejar pasar
-            st.session_state.geo_bloqueado = False
-            
-        st.session_state.geo_validado_js = True
-
-    if st.session_state.geo_bloqueado:
-        # Inyectamos CSS para ocultar TODO el diseño de Streamlit y simular página caída
-        st.markdown("""
-        <style>
-            #MainMenu {visibility: hidden;}
-            header {visibility: hidden;}
-            footer {visibility: hidden;}
-            .stApp {background-color: white;}
-            .block-container {padding-top: 1rem; max-width: 100%;}
-        </style>
-        <div style="font-family: monospace; font-size: 24px; font-weight: bold; margin-bottom: 10px;">404 Not Found</div>
-        <div style="font-family: monospace; font-size: 14px; text-align: left;">nginx/1.18.0 (Ubuntu)</div>
-        <hr style="border: 0; border-top: 1px solid #ccc; margin-top: 5px;">
-        """, unsafe_allow_html=True)
-        st.stop()
-
-verificar_geo_bloqueo()
+# Geo-Bloqueo deshabilitado debido a restricciones de seguridad e Iframes en Streamlit Cloud.
+# El sistema está seguro mediante autenticación de Supabase.
 
 # Custom CSS basico para mejorar el look en celulares especialmente
 st.markdown("""
