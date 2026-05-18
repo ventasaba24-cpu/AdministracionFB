@@ -9,3 +9,4 @@ Werkzeug
 streamlit-keyup
 alembic
 fpdf2
+streamlit-javascript
