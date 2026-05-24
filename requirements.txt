@@ -9,3 +9,5 @@ Werkzeug
 streamlit-keyup
 alembic
 fpdf2
+plotly
+numpy
