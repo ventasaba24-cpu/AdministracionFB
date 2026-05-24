@@ -1,5 +1,8 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 
 def generar_pdf_inventario(df_inventario, nombre_vendedor):
     try:
@@ -161,6 +164,11 @@ def dialog_gestion_inventario(db, vendedor_email, prod=None):
                     st.error(msj)
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_ventas_cached():
+    from database import DatabaseHandler
+    return DatabaseHandler().obtener_tabla_ventas_completa()
+
 def show():
     # Esta página requerirá rol Admin
     if st.session_state.user_role != "Admin":
@@ -174,7 +182,7 @@ def show():
     db = DatabaseHandler()
 
     # 📌 PRE-CARGAR DATOS PESADOS UNA SOLA VEZ PARA OPTIMIZAR VELOCIDAD
-    df_todas = db.obtener_tabla_ventas_completa()
+    df_todas = fetch_ventas_cached()
     df_abonos_global = db.leer_abonos()
     try:
         df_gastos = db.obtener_gastos()
@@ -286,6 +294,88 @@ def show():
                     </div>
                     """, unsafe_allow_html=True)
             
+            st.markdown("---")
+            
+            # --- SECCION: BUSINESS INTELLIGENCE (SOLO ADMIN) ---
+            with st.expander("📈 Ver Analíticas y Tendencias (Business Intelligence)", expanded=False):
+                if not df_todas.empty:
+                    df_bi = df_todas.copy()
+                    # 1. Vectorización ultrarrápida para días sin abono
+                    df_bi["dias_sin_abono"] = np.where(
+                        df_bi["Saldo_Pendiente"] > 0,
+                        (pd.Timestamp.now() - pd.to_datetime(df_bi["fecha_venta"])).dt.days,
+                        0
+                    )
+                    
+                    st.markdown("### 🖥️ Panel de Mando Analítico (Exclusivo Administrador)")
+                    st.info("Diseñado para pantallas de computadora. Los datos están vectorizados en RAM para un alto rendimiento de red.")
+                    
+                    c1, c2 = st.columns(2)
+                    
+                    with c1:
+                        # Gráfico 1: Rendimiento de Red (Distribución del dinero)
+                        # Verificamos columnas multinivel
+                        cl1 = df_bi["Comision_Red_L1"].sum() if "Comision_Red_L1" in df_bi.columns else 0.0
+                        cl2 = df_bi["Comision_Red_L2"].sum() if "Comision_Red_L2" in df_bi.columns else 0.0
+                        cl3 = df_bi["Comision_Red_L3"].sum() if "Comision_Red_L3" in df_bi.columns else 0.0
+                        
+                        valores = [
+                            utilidad_neta_base - comisiones_red_total, # Lo que realmente queda para la empresa
+                            comisiones_directas, 
+                            cl1, cl2, cl3,
+                            costo_total,
+                            iva_generado
+                        ]
+                        nombres = ["Flujo Libre", "Comisión Vendedores", "Red L1 (5%)", "Red L2 (3%)", "Red L3 (2%)", "Costo Producto", "IVA (16%)"]
+                        
+                        # Filtrar ceros para no ensuciar gráfica
+                        valores_f = [v for v in valores if v > 0]
+                        nombres_f = [n for v, n in zip(valores, nombres) if v > 0]
+                        
+                        fig1 = px.pie(values=valores_f, names=nombres_f, title="Distribución de Ingresos Brutos", hole=0.4,
+                                      color_discrete_sequence=px.colors.sequential.Tealgrn)
+                        st.plotly_chart(fig1, use_container_width=True)
+                        
+                    with c2:
+                        # Gráfico 2: Salud de Cobranza (Scatter Plot)
+                        df_deudores = df_bi[df_bi["Saldo_Pendiente"] > 0]
+                        if not df_deudores.empty:
+                            fig2 = px.scatter(df_deudores, x="Saldo_Pendiente", y="dias_sin_abono",
+                                              color="Nombre_Vendedor", size="Saldo_Pendiente",
+                                              title="Salud de Cobranza: Cuentas en Riesgo",
+                                              labels={"Saldo_Pendiente": "Deuda Activa ($)", "dias_sin_abono": "Días sin Abono"},
+                                              hover_data=["Cliente", "Producto"])
+                            # Línea roja de advertencia a los 15 días
+                            fig2.add_hline(y=15, line_dash="dash", line_color="red", annotation_text="Peligro (>15 días)")
+                            st.plotly_chart(fig2, use_container_width=True)
+                        else:
+                            st.success("¡Cobranza perfecta! No hay cuentas en riesgo.")
+                            
+                    c3, c4 = st.columns(2)
+                    
+                    with c3:
+                        # Gráfico 3: Tendencias de Catálogo (Top Perfumes)
+                        top_perfumes = df_bi.groupby("Producto")["Cantidad"].sum().reset_index().sort_values(by="Cantidad", ascending=False).head(10)
+                        fig3 = px.bar(top_perfumes, x="Cantidad", y="Producto", orientation='h',
+                                      title="Top 10 Perfumes de Alta Rotación", color="Cantidad",
+                                      color_continuous_scale="Emrld")
+                        fig3.update_layout(yaxis={'categoryorder':'total ascending'})
+                        st.plotly_chart(fig3, use_container_width=True)
+                        
+                    with c4:
+                        # Gráfico 4: Crecimiento de Vendedores
+                        df_bi["fecha_corta"] = pd.to_datetime(df_bi["fecha_venta"]).dt.date
+                        df_timeline = df_bi.groupby(["fecha_corta", "Nombre_Vendedor"])["Total_Venta"].sum().reset_index()
+                        
+                        # Obtener los top 3 vendedores para el timeline
+                        top_3_vend = df_vend_kpi["Nombre_Vendedor"].tolist()
+                        df_timeline_top = df_timeline[df_timeline["Nombre_Vendedor"].isin(top_3_vend)]
+                        
+                        if not df_timeline_top.empty:
+                            fig4 = px.line(df_timeline_top, x="fecha_corta", y="Total_Venta", color="Nombre_Vendedor",
+                                           title="Crecimiento Acumulado (Top 3 Vendedores)", markers=True)
+                            st.plotly_chart(fig4, use_container_width=True)
+                            
             st.markdown("---")
             st.subheader("Desglose Financiero y Comisiones por Vendedor")
             df_com = df_todas.groupby("Nombre_Vendedor").agg({
