@@ -303,7 +303,7 @@ def show():
                     # 1. Vectorización ultrarrápida para días sin abono
                     df_bi["dias_sin_abono"] = np.where(
                         df_bi["Saldo_Pendiente"] > 0,
-                        (pd.Timestamp.now() - pd.to_datetime(df_bi["fecha_venta"])).dt.days,
+                        (pd.Timestamp.now() - pd.to_datetime(df_bi["Fecha_Venta"])).dt.days,
                         0
                     )
                     
@@ -364,7 +364,7 @@ def show():
                         
                     with c4:
                         # Gráfico 4: Crecimiento de Vendedores
-                        df_bi["fecha_corta"] = pd.to_datetime(df_bi["fecha_venta"]).dt.date
+                        df_bi["fecha_corta"] = pd.to_datetime(df_bi["Fecha_Venta"]).dt.date
                         df_timeline = df_bi.groupby(["fecha_corta", "Nombre_Vendedor"])["Total_Venta"].sum().reset_index()
                         
                         # Obtener los top 3 vendedores para el timeline
