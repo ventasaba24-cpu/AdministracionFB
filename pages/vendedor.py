@@ -231,8 +231,8 @@ def show():
             
         # --- SECCIÓN: HISTORIAL RECIENTE DE ABONOS ---
         st.markdown("<br>", unsafe_allow_html=True)
-        st.subheader("🔔 Abonos Recientes")
-        st.markdown("Revisa los pagos que tus clientes han realizado en las últimas 48 horas.")
+        st.subheader("🔔 Abonos Recientes (Últimos 7 días)")
+        st.markdown("Revisa los pagos que tus clientes han realizado durante esta semana.")
         
         df_abonos = db.leer_abonos()
         if not df_abonos.empty and 'df_mis' in locals() and not df_mis.empty:
@@ -241,7 +241,7 @@ def show():
             df_abonos['fecha_local'] = (df_abonos['fecha_dt'] - pd.Timedelta(hours=6)).dt.date
             
             hoy = (pd.Timestamp.utcnow() - pd.Timedelta(hours=6)).date()
-            ayer = hoy - pd.Timedelta(days=1)
+            limite_semana = hoy - pd.Timedelta(days=7)
             
             cliente_map = dict(zip(df_mis['ID_Venta'], df_mis['Cliente']))
             abonos_mios = df_abonos[df_abonos['venta_id'].isin(df_mis['ID_Venta'])].copy()
@@ -249,34 +249,44 @@ def show():
             if not abonos_mios.empty:
                 abonos_mios['Cliente'] = abonos_mios['venta_id'].map(cliente_map)
                 
-                abonos_hoy = abonos_mios[abonos_mios['fecha_local'] == hoy]
-                abonos_ayer = abonos_mios[abonos_mios['fecha_local'] == ayer]
+                # Filtrar solo los de la ultima semana y ordenar del mas reciente al mas viejo
+                abonos_recientes = abonos_mios[abonos_mios['fecha_local'] >= limite_semana].copy()
+                abonos_recientes = abonos_recientes.sort_values(by='fecha_local', ascending=False)
                 
-                if not abonos_hoy.empty:
-                    st.markdown("##### 📅 Hoy")
-                    html_hoy = ""
-                    for _, r in abonos_hoy.iterrows():
-                        html_hoy += f"""
-                        <div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 10px; margin-bottom: 6px; border-radius: 4px; display: flex; justify-content: space-between; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                            <span style="color: #166534; font-weight: 500;">👤 {r['Cliente']}</span>
-                            <span style="color: #15803d; font-weight: bold;">+${r['monto_abono']:,.2f}</span>
-                        </div>
-                        """
-                    st.markdown(html_hoy, unsafe_allow_html=True)
+                if not abonos_recientes.empty:
+                    # Agrupar y renderizar por fecha
+                    for fecha_abono, grupo in abonos_recientes.groupby('fecha_local', sort=False):
+                        dias_diff = (hoy - fecha_abono).days
+                        
+                        if dias_diff == 0:
+                            titulo = "📅 Hoy"
+                            color_border = "#22c55e" # Verde
+                            color_bg = "#f0fdf4"
+                        elif dias_diff == 1:
+                            meses = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
+                            str_fecha = f"{fecha_abono.day} {meses[fecha_abono.month]} {fecha_abono.year}"
+                            titulo = f"🗓️ {str_fecha}"
+                            color_border = "#94a3b8" # Gris
+                            color_bg = "#f8fafc"
+                        else:
+                            meses = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
+                            str_fecha = f"{fecha_abono.day} {meses[fecha_abono.month]} {fecha_abono.year}"
+                            titulo = f"🗓️ {str_fecha}"
+                            color_border = "#e2e8f0"
+                            color_bg = "#ffffff"
+                            
+                        st.markdown(f"##### {titulo}")
+                        html_grupo = ""
+                        for _, r in grupo.iterrows():
+                            html_grupo += f"""
+                            <div style="background-color: {color_bg}; border-left: 4px solid {color_border}; padding: 10px; margin-bottom: 6px; border-radius: 4px; display: flex; justify-content: space-between; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                <span style="color: #334155; font-weight: 500;">👤 {r['Cliente']}</span>
+                                <span style="color: #0f172a; font-weight: bold;">+${r['monto_abono']:,.2f}</span>
+                            </div>
+                            """
+                        st.markdown(html_grupo, unsafe_allow_html=True)
                 else:
-                    st.info("No hay abonos registrados el día de hoy.")
-                    
-                if not abonos_ayer.empty:
-                    st.markdown("##### 📆 Ayer")
-                    html_ayer = ""
-                    for _, r in abonos_ayer.iterrows():
-                        html_ayer += f"""
-                        <div style="background-color: #f8fafc; border-left: 4px solid #94a3b8; padding: 10px; margin-bottom: 6px; border-radius: 4px; display: flex; justify-content: space-between; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                            <span style="color: #334155; font-weight: 500;">👤 {r['Cliente']}</span>
-                            <span style="color: #475569; font-weight: bold;">+${r['monto_abono']:,.2f}</span>
-                        </div>
-                        """
-                    st.markdown(html_ayer, unsafe_allow_html=True)
+                    st.info("No has recibido abonos en los últimos 7 días.")
             else:
                 st.info("Aún no tienes historial de abonos de tus clientes.")
         else:
