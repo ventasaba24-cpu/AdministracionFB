@@ -58,10 +58,21 @@ def main():
         st.stop()  # Detener la ejecución si no está logueado
 
     # Si llega aquí, está logueado
-    st.sidebar.title(f"Bienvenido, {st.session_state.user_name}")
-    st.sidebar.markdown(f"**Rol:** {st.session_state.user_role}")
-    
-    st.sidebar.markdown("---")
+    # Lógica de "Modo Simulación" (Impersonation)
+    if st.session_state.get("admin_impersonating", False):
+        st.sidebar.warning(f"👀 **MODO ESPÍA ACTIVO**\n\nViendo como:\n{st.session_state.user_name}")
+        if st.sidebar.button("🛑 Volver al Administrador", type="primary", width="stretch"):
+            # Restaurar credenciales reales del Admin
+            st.session_state.user_email = st.session_state.real_admin_email
+            st.session_state.user_name = st.session_state.real_admin_name
+            st.session_state.user_role = "Admin"
+            st.session_state.admin_impersonating = False
+            st.rerun()
+        st.sidebar.markdown("---")
+    else:
+        st.sidebar.title(f"Bienvenido, {st.session_state.user_name}")
+        st.sidebar.markdown(f"**Rol:** {st.session_state.user_role}")
+        st.sidebar.markdown("---")
     
     # Navegación basada en roles
     pages = {}
