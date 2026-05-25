@@ -334,7 +334,7 @@ def show():
                         
                         fig1 = px.pie(values=valores_f, names=nombres_f, title="Distribución de Ingresos Brutos", hole=0.4,
                                       color_discrete_sequence=px.colors.sequential.Tealgrn)
-                        st.plotly_chart(fig1, use_container_width=True)
+                        st.plotly_chart(fig1, width='stretch')
                         
                     with c2:
                         # Gráfico 2: Salud de Cobranza (Scatter Plot)
@@ -347,7 +347,7 @@ def show():
                                               hover_data=["Cliente", "Producto"])
                             # Línea roja de advertencia a los 15 días
                             fig2.add_hline(y=15, line_dash="dash", line_color="red", annotation_text="Peligro (>15 días)")
-                            st.plotly_chart(fig2, use_container_width=True)
+                            st.plotly_chart(fig2, width='stretch')
                         else:
                             st.success("¡Cobranza perfecta! No hay cuentas en riesgo.")
                             
@@ -360,7 +360,7 @@ def show():
                                       title="Top 10 Perfumes de Alta Rotación", color="Cantidad",
                                       color_continuous_scale="Emrld")
                         fig3.update_layout(yaxis={'categoryorder':'total ascending'})
-                        st.plotly_chart(fig3, use_container_width=True)
+                        st.plotly_chart(fig3, width='stretch')
                         
                     with c4:
                         # Gráfico 4: Crecimiento de Vendedores
@@ -374,7 +374,7 @@ def show():
                         if not df_timeline_top.empty:
                             fig4 = px.line(df_timeline_top, x="fecha_corta", y="Total_Venta", color="Nombre_Vendedor",
                                            title="Crecimiento Acumulado (Top 3 Vendedores)", markers=True)
-                            st.plotly_chart(fig4, use_container_width=True)
+                            st.plotly_chart(fig4, width='stretch')
                             
             st.markdown("---")
             st.subheader("Desglose Financiero y Comisiones por Vendedor")
@@ -786,7 +786,7 @@ def show():
             st.markdown("<br>", unsafe_allow_html=True)
             col_add, col_pdf = st.columns(2)
             with col_add:
-                if st.button("➕ Añadir Nuevo Producto", type="primary", use_container_width=True):
+                if st.button("➕ Añadir Nuevo Producto", type="primary", width='stretch'):
                     dialog_gestion_inventario(db, vendedor_sel_email, None)
             with col_pdf:
                 pdf_bytes = generar_pdf_inventario(df_inventario, opciones_vnd[vendedor_sel_email])
@@ -796,7 +796,7 @@ def show():
                         data=pdf_bytes,
                         file_name=f"Inventario_{opciones_vnd[vendedor_sel_email].replace(' ', '_')}.pdf",
                         mime="application/pdf",
-                        use_container_width=True
+                        width='stretch'
                     )
                 
             st.markdown("---")
@@ -1293,7 +1293,7 @@ def show():
                     with st.expander(f"💸 {row['Fecha']} | {row['Concepto']} - ${row['Monto']:,.2f}"):
                         st.write(f"**Categoría:** {row['Categoria']}")
                         if row['Tiene_Foto']:
-                            st.image(row['Foto_Bytes'], caption="Ticket de Comprobación", use_container_width=True)
+                            st.image(row['Foto_Bytes'], caption="Ticket de Comprobación", width='stretch')
                         else:
                             st.info("Sin evidencia fotográfica.")
                             
