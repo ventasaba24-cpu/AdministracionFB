@@ -189,7 +189,7 @@ def show():
     except:
         df_gastos = pd.DataFrame() # Fallback temporal si la tabla no se crea a tiempo
     
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 KPIs", "📦 Inventario", "💵 Abonos/Pagos", "✉️ Vendedores", "📝 Correcciones", "📉 Gastos y Egresos"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📊 KPIs", "📦 Inventario", "💵 Abonos/Pagos", "✉️ Vendedores", "📝 Correcciones", "📉 Gastos y Egresos", "🔍 Ventas Cerradas"])
 
     with tab1:
         st.subheader("Indicadores Clave de Desempeño")
@@ -1303,5 +1303,59 @@ def show():
                                 st.rerun()
             else:
                 st.info("Aún no tienes gastos registrados.")
+
+    with tab7:
+        st.subheader("🔍 Buscador de Ventas Cerradas (Pagadas al 100%)")
+        st.markdown("Encuentra rápidamente el historial de cualquier venta liquidada buscando por cliente, vendedor o producto.")
+        
+        # Filtramos para tener SOLO ventas cerradas
+        df_cerradas = df_todas[df_todas["Estado_Venta"] == "Pagado"].copy()
+        
+        busqueda = st.text_input("🔍 Buscar:", placeholder="Ej. Alma, Bersace, Juan Pérez...", key="search_admin_cerradas")
+        
+        if not df_cerradas.empty:
+            if busqueda:
+                # Filtrar con vectorización ignorando case
+                mask = (
+                    df_cerradas["Cliente"].str.contains(busqueda, case=False, na=False) |
+                    df_cerradas["Nombre_Vendedor"].str.contains(busqueda, case=False, na=False) |
+                    df_cerradas["Producto"].str.contains(busqueda, case=False, na=False)
+                )
+                df_mostrar = df_cerradas[mask]
+            else:
+                # Si no hay búsqueda, mostrar las últimas 50
+                df_mostrar = df_cerradas.tail(50).iloc[::-1]  # Invertir para ver más recientes arriba
+            
+            st.markdown("---")
+            if df_mostrar.empty:
+                st.warning("No se encontraron ventas cerradas con esa búsqueda.")
+            else:
+                st.caption(f"Mostrando {len(df_mostrar)} resultados.")
+                for _, r in df_mostrar.iterrows():
+                    st.markdown(f"""
+<div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+    <div style="font-size: 16px; color: #1e293b; margin-bottom: 5px;">👤 <b>{r['Cliente']}</b></div>
+    <div style="font-size: 14px; color: #334155; margin-bottom: 8px;">🏷️ {r['Producto']} (Vendedor: {r['Nombre_Vendedor']})</div>
+    <div style="font-size: 15px; font-weight: bold; color: #10b981;">Total Abonado: ${r['Total_Abono']:,.2f}</div>
+</div>
+""", unsafe_allow_html=True)
+                    
+                    with st.expander("Ver Historial de Abonos"):
+                        abonos_venta = df_abonos_global[df_abonos_global["venta_id"] == r["ID_Venta"]]
+                        if not abonos_venta.empty:
+                            for _, abono in abonos_venta.iterrows():
+                                if pd.notnull(abono['fecha_abono']):
+                                    if isinstance(abono['fecha_abono'], str):
+                                        f_str = abono['fecha_abono'][:10]
+                                    else:
+                                        f_str = pd.to_datetime(abono['fecha_abono']).strftime("%Y-%m-%d")
+                                else:
+                                    f_str = "Fecha desconocida"
+                                st.markdown(f"👉 **{f_str}** | **${abono['monto_abono']:,.2f}** *({abono.get('metodo_pago', 'N/A')})*")
+                        else:
+                            st.info("Esta venta fue marcada como liquidada sin registro de abonos individuales (posible migración manual).")
+                        st.markdown("<br>", unsafe_allow_html=True)
+        else:
+            st.info("No hay ventas cerradas (pagadas al 100%) en el sistema todavía.")
                     
 
