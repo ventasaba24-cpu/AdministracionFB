@@ -228,6 +228,63 @@ def show():
                 st.info("No tienes comisiones liberadas pendientes de retirar.")
         else:
             st.info("Aún no tienes ventas registradas.")
+            
+        # --- SECCIÓN: HISTORIAL RECIENTE DE ABONOS ---
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("🔔 Abonos Recientes")
+        st.markdown("Revisa los pagos que tus clientes han realizado en las últimas 48 horas.")
+        
+        df_abonos = db.leer_abonos()
+        if not df_abonos.empty and 'df_mis' in locals() and not df_mis.empty:
+            import pytz
+            df_abonos['fecha_dt'] = pd.to_datetime(df_abonos['fecha_abono'])
+            if df_abonos['fecha_dt'].dt.tz is None:
+                df_abonos['fecha_local'] = df_abonos['fecha_dt'].dt.tz_localize('UTC').dt.tz_convert('America/Mexico_City').dt.date
+            else:
+                df_abonos['fecha_local'] = df_abonos['fecha_dt'].dt.tz_convert('America/Mexico_City').dt.date
+                
+            hoy = pd.Timestamp.now(tz='America/Mexico_City').date()
+            ayer = hoy - pd.Timedelta(days=1)
+            
+            cliente_map = dict(zip(df_mis['ID_Venta'], df_mis['Cliente']))
+            abonos_mios = df_abonos[df_abonos['venta_id'].isin(df_mis['ID_Venta'])].copy()
+            
+            if not abonos_mios.empty:
+                abonos_mios['Cliente'] = abonos_mios['venta_id'].map(cliente_map)
+                
+                abonos_hoy = abonos_mios[abonos_mios['fecha_local'] == hoy]
+                abonos_ayer = abonos_mios[abonos_mios['fecha_local'] == ayer]
+                
+                if not abonos_hoy.empty:
+                    st.markdown("##### 📅 Hoy")
+                    html_hoy = ""
+                    for _, r in abonos_hoy.iterrows():
+                        html_hoy += f"""
+                        <div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 10px; margin-bottom: 6px; border-radius: 4px; display: flex; justify-content: space-between; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                            <span style="color: #166534; font-weight: 500;">👤 {r['Cliente']}</span>
+                            <span style="color: #15803d; font-weight: bold;">+${r['monto_abono']:,.2f}</span>
+                        </div>
+                        """
+                    st.markdown(html_hoy, unsafe_allow_html=True)
+                else:
+                    st.info("No hay abonos registrados el día de hoy.")
+                    
+                if not abonos_ayer.empty:
+                    st.markdown("##### 📆 Ayer")
+                    html_ayer = ""
+                    for _, r in abonos_ayer.iterrows():
+                        html_ayer += f"""
+                        <div style="background-color: #f8fafc; border-left: 4px solid #94a3b8; padding: 10px; margin-bottom: 6px; border-radius: 4px; display: flex; justify-content: space-between; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                            <span style="color: #334155; font-weight: 500;">👤 {r['Cliente']}</span>
+                            <span style="color: #475569; font-weight: bold;">+${r['monto_abono']:,.2f}</span>
+                        </div>
+                        """
+                    st.markdown(html_ayer, unsafe_allow_html=True)
+            else:
+                st.info("Aún no tienes historial de abonos de tus clientes.")
+        else:
+            st.info("Aún no tienes historial de abonos de tus clientes.")
+
 
     with col2:
         st.subheader("💰 Mis Métricas Desglosadas")
