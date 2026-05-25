@@ -189,7 +189,7 @@ def show():
     except:
         df_gastos = pd.DataFrame() # Fallback temporal si la tabla no se crea a tiempo
     
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📊 KPIs", "📦 Inventario", "💵 Abonos/Pagos", "✉️ Vendedores", "📝 Correcciones", "📉 Gastos y Egresos", "🔍 Ventas Cerradas"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["📊 KPIs", "📦 Inventario", "💵 Abonos/Pagos", "✉️ Vendedores", "📝 Correcciones", "📉 Gastos y Egresos", "🔍 Ventas Cerradas", "🎭 Simular Usuario"])
 
     with tab1:
         st.subheader("Indicadores Clave de Desempeño")
@@ -1357,5 +1357,53 @@ def show():
                         st.markdown("<br>", unsafe_allow_html=True)
         else:
             st.info("No hay ventas cerradas (pagadas al 100%) en el sistema todavía.")
+
+    with tab8:
+        st.subheader("🎭 Modo Simulación de Usuarios (Impersonation)")
+        st.markdown("Selecciona a cualquier Vendedor o Contador para **iniciar sesión temporalmente como ellos**. Podrás ver todo exactamente como ellos lo ven desde sus dispositivos, e incluso registrar ventas o hacer cambios en su nombre.")
+        
+        # Obtener lista de todos los usuarios que NO son Admin
+        from database import Usuario
+        session = db.get_session()
+        try:
+            usuarios_simulables = session.query(Usuario).filter(Usuario.rol != "Admin").all()
+        finally:
+            session.close()
+            
+        if usuarios_simulables:
+            opciones_usuarios = {}
+            for u in usuarios_simulables:
+                # Icono según el rol
+                icono = "📱" if u.rol == "Vendedor" else "📉"
+                opciones_usuarios[u.email] = f"{icono} {u.nombre} ({u.rol}) - {u.email}"
+                
+            usuario_a_simular = st.selectbox(
+                "¿A quién deseas simular?",
+                options=list(opciones_usuarios.keys()),
+                format_func=lambda x: opciones_usuarios[x]
+            )
+            
+            st.warning("⚠️ **Atención:** Cualquier acción de escritura (como registrar un abono o borrar un ticket) que realices durante la simulación, quedará guardada en la base de datos a nombre de este usuario.")
+            
+            if st.button("👀 Iniciar Modo Simulación", type="primary"):
+                # Encontrar el usuario objetivo
+                target_user = next((u for u in usuarios_simulables if u.email == usuario_a_simular), None)
+                if target_user:
+                    # Guardar las credenciales reales del Admin en la sesión para poder volver
+                    st.session_state.real_admin_email = st.session_state.user_email
+                    st.session_state.real_admin_name = st.session_state.user_name
+                    
+                    # Sobrescribir las credenciales activas con las del objetivo
+                    st.session_state.user_email = target_user.email
+                    st.session_state.user_name = target_user.nombre
+                    st.session_state.user_role = target_user.rol
+                    
+                    # Activar bandera de simulación
+                    st.session_state.admin_impersonating = True
+                    
+                    st.success(f"Iniciando sesión como {target_user.nombre}... Redirigiendo.")
+                    st.rerun()
+        else:
+            st.info("No hay otros usuarios registrados en el sistema para simular.")
                     
 
