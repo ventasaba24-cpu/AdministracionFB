@@ -879,7 +879,11 @@ def show():
                     if abonos_historial:
                         st.markdown("**📜 Historial de Pagos Anteriores:**")
                         for a in abonos_historial:
-                            f_str = a.fecha_abono.strftime("%d-%b-%Y") if a.fecha_abono else "Sin fecha"
+                            if a.fecha_abono:
+                                dt_local = a.fecha_abono - pd.Timedelta(hours=6)
+                                f_str = dt_local.strftime("%d-%b-%Y")
+                            else:
+                                f_str = "Sin fecha"
                             st.caption(f"🗓️ {f_str} • 💵 **+${a.monto_abono:,.2f}** ({a.metodo_pago})")
                         st.markdown("<hr style='margin: 8px 0px;'>", unsafe_allow_html=True)
                     
@@ -1203,7 +1207,14 @@ def show():
                         
                         # Extraer fecha del abono
                         fecha_ab = row.get('fecha_abono')
-                        fecha_ab_str = fecha_ab.strftime("%d-%b-%Y") if pd.notna(fecha_ab) and hasattr(fecha_ab, 'strftime') else ""
+                        if pd.notna(fecha_ab) and hasattr(fecha_ab, 'strftime'):
+                            try:
+                                dt = pd.to_datetime(fecha_ab) - pd.Timedelta(hours=6)
+                                fecha_ab_str = dt.strftime("%d-%b-%Y")
+                            except:
+                                fecha_ab_str = fecha_ab.strftime("%d-%b-%Y")
+                        else:
+                            fecha_ab_str = ""
                         fecha_html = f"<span style='float:right; font-size:13px; font-weight:normal; color:#64748b;'>{fecha_ab_str}</span>" if fecha_ab_str else ""
                                 
                         st.markdown(f'''
@@ -1361,10 +1372,12 @@ def show():
                         if not abonos_venta.empty:
                             for _, abono in abonos_venta.iterrows():
                                 if pd.notnull(abono['fecha_abono']):
-                                    if isinstance(abono['fecha_abono'], str):
-                                        f_str = abono['fecha_abono'][:10]
-                                    else:
-                                        f_str = pd.to_datetime(abono['fecha_abono']).strftime("%Y-%m-%d")
+                                    try:
+                                        dt = pd.to_datetime(abono['fecha_abono'])
+                                        dt_local = dt - pd.Timedelta(hours=6)
+                                        f_str = dt_local.strftime("%Y-%m-%d")
+                                    except:
+                                        f_str = str(abono['fecha_abono'])[:10]
                                 else:
                                     f_str = "Fecha desconocida"
                                 st.markdown(f"👉 **{f_str}** | **${abono['monto_abono']:,.2f}** *({abono.get('metodo_pago', 'N/A')})*")
