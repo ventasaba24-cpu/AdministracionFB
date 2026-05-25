@@ -38,7 +38,8 @@ def mostrar_detalles_popup(row):
         for estado_i, (idx, abono) in enumerate(abonos_venta.iterrows(), start=1):
             fecha = abono['fecha_abono']
             if pd.notna(fecha):
-                fecha_str = pd.to_datetime(fecha).strftime("%d/%b/%Y")
+                dt_local = pd.to_datetime(fecha) - pd.Timedelta(hours=6)
+                fecha_str = dt_local.strftime("%d/%b/%Y")
             else:
                 fecha_str = "Fecha Desconocida"
                 
@@ -407,7 +408,7 @@ def show():
                     df_abonos_mios = df_abonos[df_abonos["venta_id"].isin(mis_ventas_ids)].copy()
                     
                     if not df_abonos_mios.empty:
-                        df_abonos_mios["fecha_dt"] = pd.to_datetime(df_abonos_mios["fecha_abono"], errors='coerce')
+                        df_abonos_mios["fecha_dt"] = pd.to_datetime(df_abonos_mios["fecha_abono"], errors='coerce') - pd.Timedelta(hours=6)
                         abonos_mes = df_abonos_mios[(df_abonos_mios["fecha_dt"].dt.year == año_m) & (df_abonos_mios["fecha_dt"].dt.month == mes_m)]
                         abonos_mes_val = abonos_mes["monto_abono"].sum()
                         
