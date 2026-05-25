@@ -236,14 +236,11 @@ def show():
         
         df_abonos = db.leer_abonos()
         if not df_abonos.empty and 'df_mis' in locals() and not df_mis.empty:
-            import pytz
+            # Mexico City is UTC-6 (sin horario de verano ya)
             df_abonos['fecha_dt'] = pd.to_datetime(df_abonos['fecha_abono'])
-            if df_abonos['fecha_dt'].dt.tz is None:
-                df_abonos['fecha_local'] = df_abonos['fecha_dt'].dt.tz_localize('UTC').dt.tz_convert('America/Mexico_City').dt.date
-            else:
-                df_abonos['fecha_local'] = df_abonos['fecha_dt'].dt.tz_convert('America/Mexico_City').dt.date
-                
-            hoy = pd.Timestamp.now(tz='America/Mexico_City').date()
+            df_abonos['fecha_local'] = (df_abonos['fecha_dt'] - pd.Timedelta(hours=6)).dt.date
+            
+            hoy = (pd.Timestamp.utcnow() - pd.Timedelta(hours=6)).date()
             ayer = hoy - pd.Timedelta(days=1)
             
             cliente_map = dict(zip(df_mis['ID_Venta'], df_mis['Cliente']))
