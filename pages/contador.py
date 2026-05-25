@@ -123,7 +123,7 @@ def show():
         )
         
         # Preparar columnas
-        df_export['Fecha'] = df_export['fecha_abono'].dt.strftime('%d-%b-%Y')
+        df_export['Fecha'] = (df_export['fecha_abono'] - pd.Timedelta(hours=6)).dt.strftime('%d-%b-%Y')
         df_export['IVA_a_Pagar'] = (df_export['monto_abono'] / 1.16) * 0.16
         
         columnas_finales = ["Fecha", "Cliente", "Producto", "monto_abono", "IVA_a_Pagar"]
