@@ -1332,16 +1332,32 @@ def show():
             else:
                 st.caption(f"Mostrando {len(df_mostrar)} resultados.")
                 for _, r in df_mostrar.iterrows():
+                    abonos_venta = df_abonos_global[df_abonos_global["venta_id"] == r["ID_Venta"]]
+                    
+                    # Calcular fecha de cierre
+                    fecha_cierre_str = "Desconocida"
+                    if not abonos_venta.empty:
+                        # Asegurar formato datetime y tomar el mayor (el último abono)
+                        fechas_validas = pd.to_datetime(abonos_venta['fecha_abono'], errors='coerce').dropna()
+                        if not fechas_validas.empty:
+                            max_fecha = fechas_validas.max()
+                            # Ajuste horario a México
+                            max_fecha_local = max_fecha - pd.Timedelta(hours=6)
+                            meses = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
+                            fecha_cierre_str = f"{max_fecha_local.day} {meses[max_fecha_local.month]} {max_fecha_local.year}"
+
                     st.markdown(f"""
 <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-    <div style="font-size: 16px; color: #1e293b; margin-bottom: 5px;">👤 <b>{r['Cliente']}</b></div>
+    <div style="font-size: 16px; color: #1e293b; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;">
+        <span>👤 <b>{r['Cliente']}</b></span>
+        <span style="font-size: 13px; color: #64748b; font-weight: normal; background-color: #e2e8f0; padding: 2px 8px; border-radius: 12px;">Cerrada: {fecha_cierre_str}</span>
+    </div>
     <div style="font-size: 14px; color: #334155; margin-bottom: 8px;">🏷️ {r['Producto']} (Vendedor: {r['Nombre_Vendedor']})</div>
     <div style="font-size: 15px; font-weight: bold; color: #10b981;">Total Abonado: ${r['Total_Abono']:,.2f}</div>
 </div>
 """, unsafe_allow_html=True)
                     
                     with st.expander("Ver Historial de Abonos"):
-                        abonos_venta = df_abonos_global[df_abonos_global["venta_id"] == r["ID_Venta"]]
                         if not abonos_venta.empty:
                             for _, abono in abonos_venta.iterrows():
                                 if pd.notnull(abono['fecha_abono']):
