@@ -1,11 +1,15 @@
 import os
 import pandas as pd
 import datetime
+from zoneinfo import ZoneInfo
 import streamlit as st
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey, text, LargeBinary
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.sql import func
+
+def get_mexico_time():
+    return datetime.datetime.now(ZoneInfo("America/Mexico_City")).replace(tzinfo=None)
 
 Base = declarative_base()
 
@@ -29,7 +33,7 @@ class IntentoSeguridad(Base):
     identificador = Column(String(100), nullable=False, unique=True) # IP o Email atacado
     fallos = Column(Integer, default=0)
     bloqueado_hasta = Column(DateTime, nullable=True)
-    ultimo_intento = Column(DateTime, default=datetime.datetime.utcnow)
+    ultimo_intento = Column(DateTime, default=get_mexico_time)
 
 from sqlalchemy import UniqueConstraint
 
@@ -49,7 +53,7 @@ class Producto(Base):
 class Venta(Base):
     __tablename__ = 'ventas'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    fecha_venta = Column(DateTime, default=datetime.datetime.utcnow)
+    fecha_venta = Column(DateTime, default=get_mexico_time)
     
     # Llaves foráneas
     vendedor_email = Column(String(100), ForeignKey('usuarios.email', onupdate='CASCADE', ondelete='CASCADE'))
@@ -73,7 +77,7 @@ class Abono(Base):
     __tablename__ = 'abonos'
     id_abono = Column(Integer, primary_key=True, autoincrement=True)
     venta_id = Column(Integer, ForeignKey('ventas.id'), nullable=False)
-    fecha_abono = Column(DateTime, default=datetime.datetime.utcnow)
+    fecha_abono = Column(DateTime, default=get_mexico_time)
     monto_abono = Column(Float, nullable=False)
     metodo_pago = Column(String(50), default="Tranferencia")
     
@@ -88,7 +92,7 @@ class Gasto(Base):
     concepto = Column(String(200), nullable=False)
     monto = Column(Float, nullable=False)
     categoria = Column(String(100), default="Otros")
-    fecha_gasto = Column(DateTime, default=datetime.datetime.utcnow)
+    fecha_gasto = Column(DateTime, default=get_mexico_time)
     ticket_foto = Column(LargeBinary, nullable=True)
     factura_xml = Column(LargeBinary, nullable=True)
     factura_pdf = Column(LargeBinary, nullable=True)
@@ -372,7 +376,7 @@ class DatabaseHandler:
                 cantidad=cantidad,
                 monto_total=monto_total,
                 costo_historico=costo_total, # Congelado para la historia de utilidades de los lotes exactos
-                fecha_venta=datetime.datetime.now()
+                fecha_venta=get_mexico_time()
             )
             session.add(nueva_venta)
                 
@@ -428,7 +432,7 @@ class DatabaseHandler:
     def registrar_abono(self, venta_id, monto, metodo="Efectivo", fecha_abono=None):
         session = self.get_session()
         if fecha_abono is None:
-            fecha_abono = datetime.datetime.now()
+            fecha_abono = get_mexico_time()
         
         try:
             venta_existe = session.query(Venta).filter_by(id=venta_id).first()
@@ -463,7 +467,7 @@ class DatabaseHandler:
              venta = session.query(Venta).filter_by(id=venta_id).first()
              if venta:
                  venta.comision_cobrada = True
-                 venta.fecha_cobro_comision = datetime.datetime.utcnow()
+                 venta.fecha_cobro_comision = get_mexico_time()
                  session.commit()
                  return True, "Se ha registrado el cobro de esta comisión."
              return False, "Venta no encontrada."
@@ -505,13 +509,13 @@ class DatabaseHandler:
                      fechas_abono = [a.fecha_abono for a in abonos_query if a.fecha_abono]
                      if fechas_abono:
                          ultimo = max(fechas_abono)
-                         diferencia = datetime.datetime.now() - ultimo
+                         diferencia = get_mexico_time() - ultimo
                          dias_ultimo = diferencia.days
                  
                  # Si no tiene abono, usar fecha de inicio de venta
                  if dias_ultimo is None:
                      if v.fecha_venta:
-                         dias_ultimo = (datetime.datetime.now() - v.fecha_venta).days
+                         dias_ultimo = (get_mexico_time() - v.fecha_venta).days
                      else:
                          dias_ultimo = 0
                  
@@ -722,7 +726,7 @@ class DatabaseHandler:
         if not registro:
             return True, None # No hay registro, puede intentar
             
-        if registro.bloqueado_hasta and registro.bloqueado_hasta > datetime.datetime.utcnow():
+        if registro.bloqueado_hasta and registro.bloqueado_hasta > get_mexico_time():
             return False, registro.bloqueado_hasta # Está bloqueado
             
         return True, None
@@ -735,17 +739,17 @@ class DatabaseHandler:
             session.add(registro)
         else:
             # Si ya pasó su tiempo de bloqueo antiguo, resetear fallos
-            if registro.bloqueado_hasta and registro.bloqueado_hasta <= datetime.datetime.utcnow():
+            if registro.bloqueado_hasta and registro.bloqueado_hasta <= get_mexico_time():
                  registro.fallos = 1
                  registro.bloqueado_hasta = None
             else:
                  registro.fallos += 1
             
             if registro.fallos >= 3:
-                # Bloquear por 15 minutos en UTC
-                registro.bloqueado_hasta = datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
+                # Bloquear por 15 minutos
+                registro.bloqueado_hasta = get_mexico_time() + datetime.timedelta(minutes=15)
         
-        registro.ultimo_intento = datetime.datetime.utcnow()
+        registro.ultimo_intento = get_mexico_time()
         session.commit()
 
     def limpiar_fallos(self, session, identificador):
@@ -766,7 +770,7 @@ class DatabaseHandler:
              permitido, tiempo_bloqueo = self.verificar_y_registrar_intento(session, id_seguridad)
              if not permitido:
                  # Restar minutos locales
-                 resta = tiempo_bloqueo - datetime.datetime.utcnow()
+                 resta = tiempo_bloqueo - get_mexico_time()
                  minutos_restantes = max(1, int(resta.total_seconds() / 60))
                  return False, None, None, f"Por seguridad tecnológica, este acceso ha sido temporalmente suspendido. Intente de nuevo en {minutos_restantes} minutos."
              
@@ -936,7 +940,7 @@ class DatabaseHandler:
                 concepto=concepto,
                 monto=float(monto),
                 categoria=categoria,
-                fecha_gasto=fecha if fecha else datetime.datetime.utcnow(),
+                fecha_gasto=fecha if fecha else get_mexico_time(),
                 ticket_foto=ticket_foto,
                 factura_xml=factura_xml,
                 factura_pdf=factura_pdf
