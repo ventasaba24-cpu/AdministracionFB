@@ -880,7 +880,7 @@ def show():
                         st.markdown("**📜 Historial de Pagos Anteriores:**")
                         for a in abonos_historial:
                             if a.fecha_abono:
-                                dt_local = a.fecha_abono - pd.Timedelta(hours=6)
+                                dt_local = a.fecha_abono
                                 f_str = dt_local.strftime("%d-%b-%Y")
                             else:
                                 f_str = "Sin fecha"
@@ -1209,7 +1209,7 @@ def show():
                         fecha_ab = row.get('fecha_abono')
                         if pd.notna(fecha_ab) and hasattr(fecha_ab, 'strftime'):
                             try:
-                                dt = pd.to_datetime(fecha_ab) - pd.Timedelta(hours=6)
+                                dt = pd.to_datetime(fecha_ab)
                                 fecha_ab_str = dt.strftime("%d-%b-%Y")
                             except:
                                 fecha_ab_str = fecha_ab.strftime("%d-%b-%Y")
@@ -1353,7 +1353,7 @@ def show():
                         if not fechas_validas.empty:
                             max_fecha = fechas_validas.max()
                             # Ajuste horario a México
-                            max_fecha_local = max_fecha - pd.Timedelta(hours=6)
+                            max_fecha_local = max_fecha
                             meses = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
                             fecha_cierre_str = f"{max_fecha_local.day} {meses[max_fecha_local.month]} {max_fecha_local.year}"
 
@@ -1374,7 +1374,7 @@ def show():
                                 if pd.notnull(abono['fecha_abono']):
                                     try:
                                         dt = pd.to_datetime(abono['fecha_abono'])
-                                        dt_local = dt - pd.Timedelta(hours=6)
+                                        dt_local = dt
                                         f_str = dt_local.strftime("%Y-%m-%d")
                                     except:
                                         f_str = str(abono['fecha_abono'])[:10]
