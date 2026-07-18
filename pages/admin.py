@@ -39,9 +39,6 @@ def generar_pdf_inventario(df_inventario, nombre_vendedor):
     pdf.add_page()
     pdf.set_font("Arial", "", 10)
     
-    total_piezas = 0
-    total_valor = 0.0
-    
     df_activos = df_inventario[pd.to_numeric(df_inventario["stock"], errors="coerce").fillna(0) > 0].copy()
     if not df_activos.empty:
         df_activos = df_activos.sort_values(by="nombre")
@@ -51,9 +48,6 @@ def generar_pdf_inventario(df_inventario, nombre_vendedor):
             precio = float(row['precio'])
             stock = int(row['stock'])
             
-            total_piezas += stock
-            total_valor += (precio * stock)
-            
             # Limpiar caracteres raros que rompen fpdf
             nombre_ascii = nombre.encode('latin-1', 'replace').decode('latin-1')
             
@@ -62,12 +56,6 @@ def generar_pdf_inventario(df_inventario, nombre_vendedor):
             pdf.cell(45, 8, str(stock), border=1, align="C")
             pdf.ln()
             
-    pdf.ln(5)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(100, 10, "TOTALES:", border=0, align="R")
-    pdf.cell(45, 10, f"${total_valor:,.2f}", border=0, align="R")
-    pdf.cell(45, 10, f"{total_piezas} pzs", border=0, align="C")
-    
     return bytes(pdf.output())
 
 @st.dialog("Edición Completa de Venta")
