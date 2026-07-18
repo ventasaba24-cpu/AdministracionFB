@@ -25,8 +25,8 @@ def generar_pdf_inventario(df_inventario, nombre_vendedor):
             self.set_font("Arial", "B", 11)
             self.set_fill_color(200, 220, 255)
             self.cell(100, 10, "Producto", border=1, fill=True)
-            self.cell(45, 10, "Precio Publico", border=1, align="C", fill=True)
-            self.cell(45, 10, "Cantidad", border=1, align="C", fill=True)
+            self.cell(45, 10, "Precio Unitario", border=1, align="C", fill=True)
+            self.cell(45, 10, "Inventario", border=1, align="C", fill=True)
             self.ln()
 
         def footer(self):
