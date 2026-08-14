@@ -67,6 +67,12 @@ def show():
     col1, col2 = st.columns(2)
 
     with col1:
+        # Verificar si el vendedor pertenece a un grupo compartido
+        grupo_info = db.obtener_grupo_de_vendedor(st.session_state.user_email)
+        if grupo_info:
+            miembros_txt = ", ".join(grupo_info["miembros"])
+            st.info(f"🤝 **Inventario Compartido Activo ({grupo_info['nombre_grupo']})**: Tu stock está fusionado en tiempo real con **{miembros_txt}**.")
+            
         # Cargar inventario real del vendedor
         df_inventario = db.leer_inventario(vendedor_email=st.session_state.user_email)
         
@@ -87,9 +93,14 @@ def show():
                 if not df_mostrar.empty:
                     html_cards = ""
                     for _, row in df_mostrar.iterrows():
+                        fecha_raw = row.get('fecha_ingreso', '')
+                        fecha_str = ""
+                        if fecha_raw and str(fecha_raw).strip() and str(fecha_raw) != "None":
+                            fecha_str = f" | 📅 Ingreso: {str(fecha_raw)[:10]}"
+
                         html_cards += f"""
                         <div style="background-color: #f8fafc; padding: 10px; border-radius: 6px; border-left: 4px solid #3b82f6; margin-bottom: 8px; font-size: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                            <div style="font-weight: bold; color: #1e293b; margin-bottom: 4px;">🏷️ {row['nombre']}</div>
+                            <div style="font-weight: bold; color: #1e293b; margin-bottom: 4px;">🏷️ {row['nombre']} <span style="font-size:11px; font-weight:normal; color:#475569; background:#e2e8f0; padding:2px 6px; border-radius:10px;">{row.get('lote', 'Lote 1')}{fecha_str}</span></div>
                             <div style="display: flex; justify-content: space-between; color: #475569;">
                                 <div>📦 Stock Disp: <b style="color: #4338ca;">{int(row['stock'])}</b></div>
                                 <div>💵 Precio Unitario: <b style="color: #059669;">${float(row['precio']):,.2f}</b></div>
