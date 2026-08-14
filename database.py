@@ -15,6 +15,19 @@ Base = declarative_base()
 
 # --- MODELOS DE DATOS ---
 
+class GrupoInventario(Base):
+    __tablename__ = 'grupos_inventario'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    nombre_grupo = Column(String(100), nullable=False)
+    fecha_creacion = Column(DateTime, default=get_mexico_time)
+
+class CatalogoProducto(Base):
+    __tablename__ = 'catalogo_productos'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    nombre = Column(String(150), unique=True, nullable=False)
+    categoria = Column(String(100), default='General')
+    descripcion = Column(String(255), nullable=True)
+
 class Usuario(Base):
     __tablename__ = 'usuarios'
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -26,6 +39,7 @@ class Usuario(Base):
     patrocinador_email = Column(String(100), nullable=True) # Ligadura Multi-nivel
     tipo_vendedor = Column(String(50), default='Crédito') # 'Crédito' o 'One-Shot'
     session_token = Column(String(100), nullable=True) # UUID Session Key
+    grupo_inventario_id = Column(Integer, ForeignKey('grupos_inventario.id', ondelete='SET NULL'), nullable=True)
 
 class IntentoSeguridad(Base):
     __tablename__ = 'intentos_seguridad'
@@ -47,6 +61,7 @@ class Producto(Base):
     costo_compra = Column(Float, default=0.0) # Costo de inversión que solo ve el admin
     proveedor = Column(String(150), nullable=True) # Distribuidor/Proveedor que solo ve admin
     lote = Column(String(50), default='Lote 1')
+    fecha_ingreso = Column(DateTime, default=get_mexico_time)
     
     __table_args__ = (UniqueConstraint('nombre', 'lote', 'vendedor_email', name='_nombre_lote_vendedor_uc'),)
 
@@ -116,23 +131,55 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
     # Migración silenciosa de SQLite para no molestar al usuario con comandos manuales
     if "sqlite" in db_path:
         engine = create_engine(db_path, connect_args={"check_same_thread": False})
+        Base.metadata.create_all(engine)
     else:
-        # Entorno PostgreSQL (Nube Supabase)
-        engine = create_engine(db_path, pool_pre_ping=True, pool_size=5, max_overflow=10)
-        
-        # INDEXACIÓN EXTREMA (Velocidad Operacional y Búsquedas O(log n))
         try:
-             with engine.connect() as conn:
-                 conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ventas_vendedor ON ventas(vendedor_email)"))
-                 conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas(fecha_venta)"))
-                 conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ventas_producto ON ventas(producto_nombre)"))
-                 conn.execute(text("CREATE INDEX IF NOT EXISTS idx_productos_nombre ON productos(nombre)"))
-                 conn.execute(text("CREATE INDEX IF NOT EXISTS idx_abonos_venta ON abonos(venta_id)"))
-                 conn.commit()
-        except:
-             pass # En caso de que el dialecto rechace la sintaxis.
-             
-    Base.metadata.create_all(engine)
+            # Entorno PostgreSQL (Nube Supabase)
+            engine = create_engine(db_path, pool_pre_ping=True, pool_size=5, max_overflow=10)
+            with engine.connect() as conn:
+                for idx_sql in [
+                    "CREATE INDEX IF NOT EXISTS idx_ventas_vendedor ON ventas(vendedor_email)",
+                    "CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas(fecha_venta)",
+                    "CREATE INDEX IF NOT EXISTS idx_ventas_producto ON ventas(producto_nombre)",
+                    "CREATE INDEX IF NOT EXISTS idx_productos_nombre ON productos(nombre)",
+                    "CREATE INDEX IF NOT EXISTS idx_abonos_venta ON abonos(venta_id)"
+                ]:
+                    try:
+                        conn.execute(text(idx_sql))
+                    except Exception:
+                        pass
+                conn.commit()
+            Base.metadata.create_all(engine)
+        except Exception as e:
+            print(f"⚠️ Fallo al conectar a PostgreSQL ({e}). Conectando a SQLite local de respaldo...")
+            db_path = default_path
+            engine = create_engine(db_path, connect_args={"check_same_thread": False})
+            Base.metadata.create_all(engine)
+    
+    # Auto-migraciones para columnas añadidas en tablas pre-existentes
+    try:
+        with engine.connect() as conn:
+            for query_str in [
+                "ALTER TABLE usuarios ADD COLUMN patrocinador_email VARCHAR(100)",
+                "ALTER TABLE usuarios ADD COLUMN tipo_vendedor VARCHAR(50)",
+                "ALTER TABLE usuarios ADD COLUMN session_token VARCHAR(100)",
+                "ALTER TABLE usuarios ADD COLUMN grupo_inventario_id INTEGER",
+                "ALTER TABLE productos ADD COLUMN costo_compra FLOAT DEFAULT 0.0",
+                "ALTER TABLE productos ADD COLUMN proveedor VARCHAR(150)",
+                "ALTER TABLE productos ADD COLUMN lote VARCHAR(50) DEFAULT 'Lote 1'",
+                "ALTER TABLE productos ADD COLUMN fecha_ingreso TIMESTAMP",
+                "ALTER TABLE ventas ADD COLUMN costo_historico FLOAT DEFAULT 0.0",
+                "ALTER TABLE ventas ADD COLUMN comision_cobrada BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE ventas ADD COLUMN fecha_cobro_comision TIMESTAMP"
+            ]:
+                try:
+                    conn.execute(text(query_str))
+                    conn.commit()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     SessionMaker = sessionmaker(bind=engine, expire_on_commit=False)
     return engine, SessionMaker
 
@@ -183,12 +230,17 @@ class DatabaseHandler:
     # ==========================
     
     def leer_inventario(self, vendedor_email=None):
-        """Devuelve el inventario en formato DataFrame de Pandas. Si no se provee email, devuelve todos."""
+        """Devuelve el inventario en formato DataFrame de Pandas. Si no se provee email, devuelve todos. Si el vendedor pertenece a un grupo de inventario compartido, incluye el stock del grupo."""
         session = self.get_session()
         try:
             query = session.query(Producto)
             if vendedor_email:
-                query = query.filter_by(vendedor_email=vendedor_email)
+                usr = session.query(Usuario).filter_by(email=vendedor_email).first()
+                if usr and usr.grupo_inventario_id:
+                    miembros = [u.email for u in session.query(Usuario).filter_by(grupo_inventario_id=usr.grupo_inventario_id).all()]
+                    query = query.filter(Producto.vendedor_email.in_(miembros))
+                else:
+                    query = query.filter_by(vendedor_email=vendedor_email)
             df = pd.read_sql(query.statement, session.bind)
             return df
         finally:
@@ -205,15 +257,26 @@ class DatabaseHandler:
             return total_valor
         finally:
             session.close()
-            
+
+    def asegurar_en_catalogo(self, session, nombre_producto):
+        """Garantiza que el nombre del producto exista en el catálogo maestro."""
+        nombre_clean = str(nombre_producto).strip()
+        if not nombre_clean:
+            return
+        existente = session.query(CatalogoProducto).filter(func.lower(CatalogoProducto.nombre) == nombre_clean.lower()).first()
+        if not existente:
+            nuevo = CatalogoProducto(nombre=nombre_clean, categoria="General")
+            session.add(nuevo)
+
     def guardar_inventario(self, df_inventario, vendedor_email):
         """Sobreescribe el inventario de un vendedor específico basado en el DataFrame del UI."""
         session = self.get_session()
         try:
-            # Respaldar los costos de compra y proveedores actuales (para no sobreescribirlos si es un vendedor quien guarda)
+            # Respaldar los costos de compra, proveedores y fechas de ingreso actuales
             old_products = session.query(Producto).filter_by(vendedor_email=vendedor_email).all()
             costos_map = {f"{p.nombre}-{p.lote}": p.costo_compra for p in old_products}
             provs_map = {f"{p.nombre}-{p.lote}": p.proveedor for p in old_products}
+            fechas_map = {f"{p.nombre}-{p.lote}": p.fecha_ingreso for p in old_products}
             
             # Borramos el previo stock de este vendedor
             session.query(Producto).filter_by(vendedor_email=vendedor_email).delete(synchronize_session=False)
@@ -238,6 +301,10 @@ class DatabaseHandler:
                 prov_nuevo = row.get('proveedor')
                 if pd.isna(prov_nuevo) or prov_nuevo is None:
                     prov_nuevo = provs_map.get(key_map, "Desconocido")
+
+                fecha_ing = row.get('fecha_ingreso')
+                if pd.isna(fecha_ing) or fecha_ing is None:
+                    fecha_ing = fechas_map.get(key_map, get_mexico_time())
                     
                 nuevo_prod = Producto(
                     nombre=nombre,
@@ -246,9 +313,12 @@ class DatabaseHandler:
                     precio=float(row.get('precio', 0.0)),
                     costo_compra=float(costo_nuevo),
                     proveedor=str(prov_nuevo),
-                    lote=lote
+                    lote=lote,
+                    fecha_ingreso=fecha_ing
                 )
                 session.add(nuevo_prod)
+                self.asegurar_en_catalogo(session, nombre)
+
             session.commit()
             return True, "Inventario sincronizado."
         except Exception as e:
@@ -260,27 +330,32 @@ class DatabaseHandler:
     def upsert_producto(self, vendedor_email, datos, producto_id=None):
         session = self.get_session()
         try:
+            nombre_val = str(datos["nombre"]).strip()
             if producto_id:
                 prod = session.query(Producto).filter_by(id=producto_id, vendedor_email=vendedor_email).first()
                 if not prod:
                     return False, "Producto no encontrado."
-                prod.nombre = str(datos["nombre"]).strip()
+                prod.nombre = nombre_val
                 prod.lote = str(datos.get("lote", "Lote 1")).strip()
                 prod.precio = float(datos.get("precio", 0.0))
                 prod.costo_compra = float(datos.get("costo_compra", 0.0))
                 prod.proveedor = str(datos.get("proveedor", "Generico")).strip()
                 prod.stock = int(datos.get("stock", 0))
+                if datos.get("fecha_ingreso"):
+                    prod.fecha_ingreso = datos.get("fecha_ingreso")
             else:
                 prod = Producto(
-                    nombre=str(datos["nombre"]).strip(),
+                    nombre=nombre_val,
                     vendedor_email=vendedor_email,
                     lote=str(datos.get("lote", "Lote 1")).strip(),
                     precio=float(datos.get("precio", 0.0)),
                     costo_compra=float(datos.get("costo_compra", 0.0)),
                     proveedor=str(datos.get("proveedor", "Generico")).strip(),
-                    stock=int(datos.get("stock", 0))
+                    stock=int(datos.get("stock", 0)),
+                    fecha_ingreso=datos.get("fecha_ingreso", get_mexico_time())
                 )
                 session.add(prod)
+            self.asegurar_en_catalogo(session, nombre_val)
             session.commit()
             return True, "Producto guardado satisfactoriamente."
         except Exception as e:
@@ -307,7 +382,17 @@ class DatabaseHandler:
     def actualizar_stock(self, producto_nombre, cantidad_vendida, vendedor_email):
         session = self.get_session()
         try:
-            productos_lotes = session.query(Producto).filter_by(nombre=producto_nombre, vendedor_email=vendedor_email).filter(Producto.stock > 0).order_by(Producto.id.asc()).all()
+            usr = session.query(Usuario).filter_by(email=vendedor_email).first()
+            if usr and usr.grupo_inventario_id:
+                miembros = [u.email for u in session.query(Usuario).filter_by(grupo_inventario_id=usr.grupo_inventario_id).all()]
+            else:
+                miembros = [vendedor_email]
+
+            productos_lotes = session.query(Producto).filter(
+                Producto.nombre == producto_nombre,
+                Producto.vendedor_email.in_(miembros)
+            ).filter(Producto.stock > 0).order_by(Producto.fecha_ingreso.asc(), Producto.id.asc()).all()
+
             if not productos_lotes:
                 return False
                 
@@ -335,14 +420,24 @@ class DatabaseHandler:
         try:
             monto_total = float(cantidad) * float(precio_unitario)
             
-            # FIFO Logic y Candado de Concurrencia PESSIMISTIC LOCKING
+            usr = session.query(Usuario).filter_by(email=vendedor_email).first()
+            if usr and usr.grupo_inventario_id:
+                miembros_emails = [u.email for u in session.query(Usuario).filter_by(grupo_inventario_id=usr.grupo_inventario_id).all()]
+            else:
+                miembros_emails = [vendedor_email]
+
+            # FIFO Logic ordenado por fecha_ingreso y Candado de Concurrencia
             try:
-                # Nube (PostgreSQL) Soporta Bloqueo Riguroso
-                productos_lotes = session.query(Producto).filter_by(nombre=producto, vendedor_email=vendedor_email).with_for_update().order_by(Producto.id.asc()).all()
+                productos_lotes = session.query(Producto).filter(
+                    Producto.nombre == producto,
+                    Producto.vendedor_email.in_(miembros_emails)
+                ).with_for_update().order_by(Producto.fecha_ingreso.asc(), Producto.id.asc()).all()
             except Exception:
-                # Local (SQLite) Bloquea mediante el driver, no requiere FOR UPDATE
                 session.rollback()
-                productos_lotes = session.query(Producto).filter_by(nombre=producto, vendedor_email=vendedor_email).order_by(Producto.id.asc()).all()
+                productos_lotes = session.query(Producto).filter(
+                    Producto.nombre == producto,
+                    Producto.vendedor_email.in_(miembros_emails)
+                ).order_by(Producto.fecha_ingreso.asc(), Producto.id.asc()).all()
             
             restante_a_descontar = cantidad
             costo_total = 0.0
@@ -991,3 +1086,150 @@ class DatabaseHandler:
             return False, f"Error: {e}"
         finally:
             session.close()
+
+    # ==========================
+    #   GESTIÓN DE CATÁLOGO Y GRUPOS DE INVENTARIO
+    # ==========================
+
+    def obtener_catalogo_maestro(self):
+        """Devuelve todos los productos del catálogo maestro estandarizado."""
+        session = self.get_session()
+        try:
+            prods = session.query(CatalogoProducto).order_by(CatalogoProducto.nombre.asc()).all()
+            if not prods:
+                nombres_existentes = session.query(Producto.nombre).distinct().all()
+                for (nom,) in nombres_existentes:
+                    if nom and nom.strip():
+                        c_p = CatalogoProducto(nombre=nom.strip(), categoria="General")
+                        session.add(c_p)
+                session.commit()
+                prods = session.query(CatalogoProducto).order_by(CatalogoProducto.nombre.asc()).all()
+            return [{"id": p.id, "nombre": p.nombre, "categoria": p.categoria, "descripcion": p.descripcion} for p in prods]
+        finally:
+            session.close()
+
+    def agregar_producto_catalogo(self, nombre, categoria="General", descripcion=""):
+        """Agrega un nombre de producto al catálogo maestro si no existe."""
+        session = self.get_session()
+        try:
+            nombre_clean = str(nombre).strip()
+            if not nombre_clean:
+                return False, "El nombre del producto no puede estar vacío."
+            
+            existente = session.query(CatalogoProducto).filter(func.lower(CatalogoProducto.nombre) == nombre_clean.lower()).first()
+            if existente:
+                return True, "El producto ya existe en el catálogo maestro."
+            
+            nuevo = CatalogoProducto(nombre=nombre_clean, categoria=categoria, descripcion=descripcion)
+            session.add(nuevo)
+            session.commit()
+            return True, f"Producto '{nombre_clean}' agregado al catálogo maestro."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error al agregar producto al catálogo: {e}"
+        finally:
+            session.close()
+
+    def obtener_grupos_inventario(self):
+        """Devuelve la lista de grupos de inventario con sus vendedores asociados."""
+        session = self.get_session()
+        try:
+            grupos = session.query(GrupoInventario).all()
+            resultado = []
+            for g in grupos:
+                miembros = session.query(Usuario).filter_by(grupo_inventario_id=g.id).all()
+                resultado.append({
+                    "id": g.id,
+                    "nombre_grupo": g.nombre_grupo,
+                    "fecha_creacion": g.fecha_creacion,
+                    "miembros": [{"email": m.email, "nombre": m.nombre} for m in miembros]
+                })
+            return resultado
+        finally:
+            session.close()
+
+    def crear_grupo_inventario(self, nombre_grupo, emails_vendedores):
+        """Crea un grupo de inventario y asigna los vendedores especificados."""
+        session = self.get_session()
+        try:
+            nombre_clean = str(nombre_grupo).strip()
+            if not nombre_clean:
+                return False, "El nombre del grupo es obligatorio."
+            
+            nuevo_grupo = GrupoInventario(nombre_grupo=nombre_clean)
+            session.add(nuevo_grupo)
+            session.flush()
+            
+            for email in emails_vendedores:
+                usr = session.query(Usuario).filter_by(email=email).first()
+                if usr:
+                    usr.grupo_inventario_id = nuevo_grupo.id
+            
+            session.commit()
+            return True, f"Grupo '{nombre_clean}' creado exitosamente."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error al crear grupo: {e}"
+        finally:
+            session.close()
+
+    def eliminar_grupo_inventario(self, grupo_id):
+        """Elimina un grupo de inventario y desvincula a sus miembros."""
+        session = self.get_session()
+        try:
+            grupo = session.query(GrupoInventario).filter_by(id=grupo_id).first()
+            if not grupo:
+                return False, "Grupo no encontrado."
+            
+            miembros = session.query(Usuario).filter_by(grupo_inventario_id=grupo_id).all()
+            for m in miembros:
+                m.grupo_inventario_id = None
+            
+            session.delete(grupo)
+            session.commit()
+            return True, "Grupo eliminado y vendedores desvinculados."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error al eliminar grupo: {e}"
+        finally:
+            session.close()
+
+    def asignar_vendedores_a_grupo(self, grupo_id, emails_vendedores):
+        """Asigna o remueve vendedores de un grupo de inventario."""
+        session = self.get_session()
+        try:
+            actuales = session.query(Usuario).filter_by(grupo_inventario_id=grupo_id).all()
+            for a in actuales:
+                a.grupo_inventario_id = None
+            
+            for email in emails_vendedores:
+                usr = session.query(Usuario).filter_by(email=email).first()
+                if usr:
+                    usr.grupo_inventario_id = grupo_id
+            
+            session.commit()
+            return True, "Integrantes del grupo actualizados."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error al actualizar integrantes: {e}"
+        finally:
+            session.close()
+
+    def obtener_grupo_de_vendedor(self, vendedor_email):
+        """Devuelve los detalles del grupo de inventario compartido al que pertenece un vendedor."""
+        session = self.get_session()
+        try:
+            usr = session.query(Usuario).filter_by(email=vendedor_email).first()
+            if usr and usr.grupo_inventario_id:
+                grp = session.query(GrupoInventario).filter_by(id=usr.grupo_inventario_id).first()
+                if grp:
+                    miembros = session.query(Usuario).filter_by(grupo_inventario_id=grp.id).all()
+                    return {
+                        "id": grp.id,
+                        "nombre_grupo": grp.nombre_grupo,
+                        "miembros": [m.nombre for m in miembros]
+                    }
+            return None
+        finally:
+            session.close()
+
