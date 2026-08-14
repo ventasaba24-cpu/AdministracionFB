@@ -117,9 +117,43 @@ def dialog_editar_abono(abono_info, db):
 
 @st.dialog("📦 Gestionar Producto")
 def dialog_gestion_inventario(db, vendedor_email, prod=None):
+    import datetime
     st.markdown("Agrega o edita los detalles del producto para este vendedor.")
-    nombre = st.text_input("Nombre del Producto", value=prod['nombre'] if prod is not None else "")
+    
+    # Obtener catálogo maestro
+    cat_maestro = db.obtener_catalogo_maestro()
+    opciones_cat = [p['nombre'] for p in cat_maestro]
+    opciones_cat.append("➕ Otro / Nuevo Producto Estandarizado")
+    
+    val_prod_actual = prod['nombre'] if prod is not None else ""
+    idx_def = 0
+    if val_prod_actual in [p['nombre'] for p in cat_maestro]:
+        idx_def = [p['nombre'] for p in cat_maestro].index(val_prod_actual)
+    elif val_prod_actual:
+        idx_def = len(opciones_cat) - 1
+        
+    prod_sel = st.selectbox("Seleccionar del Catálogo Único", opciones_cat, index=idx_def)
+    
+    if prod_sel == "➕ Otro / Nuevo Producto Estandarizado":
+        nombre = st.text_input("Escribe el Nombre Completo del Producto", value=val_prod_actual)
+    else:
+        nombre = prod_sel
+        
     lote = st.text_input("Lote ID", value=prod['lote'] if prod is not None and 'lote' in prod else "Lote 1")
+    
+    # Fecha de ingreso
+    fecha_def = datetime.date.today()
+    if prod is not None and prod.get('fecha_ingreso'):
+        try:
+            if isinstance(prod['fecha_ingreso'], str):
+                fecha_def = datetime.datetime.strptime(str(prod['fecha_ingreso'])[:10], "%Y-%m-%d").date()
+            elif isinstance(prod['fecha_ingreso'], (datetime.datetime, datetime.date)):
+                fecha_def = prod['fecha_ingreso']
+        except Exception:
+            pass
+            
+    fecha_ingreso_val = st.date_input("📅 Fecha de Ingreso de Inventario", value=fecha_def)
+    
     precio = st.number_input("Precio Final Público ($)", min_value=0.0, value=float(prod['precio']) if prod is not None else 0.0, step=50.0)
     costo = st.number_input("Costo Compra Prov ($)", min_value=0.0, value=float(prod.get('costo_compra', 0.0)) if prod is not None else 0.0, step=50.0)
     proveedor = st.text_input("Proveedor", value=prod.get('proveedor', 'Generico') if prod is not None else "Generico")
@@ -132,7 +166,13 @@ def dialog_gestion_inventario(db, vendedor_email, prod=None):
                 st.error("El nombre es requerido.")
             else:
                 datos = {
-                    "nombre": nombre, "lote": lote, "precio": precio, "costo_compra": costo, "proveedor": proveedor, "stock": stock
+                    "nombre": nombre,
+                    "lote": lote,
+                    "precio": precio,
+                    "costo_compra": costo,
+                    "proveedor": proveedor,
+                    "stock": stock,
+                    "fecha_ingreso": fecha_ingreso_val
                 }
                 prod_id = prod['id'] if prod is not None else None
                 exito, msj = db.upsert_producto(vendedor_email, datos, prod_id)
@@ -993,6 +1033,75 @@ def show():
                             st.markdown("Revisa el archivo `.streamlit/secrets.toml`.")
                     else:
                         st.error(f"Error al registrar en la base de datos: {msj_db}")
+
+        st.markdown("---")
+        st.subheader("📚 Catálogo Único de Productos")
+        st.markdown("Estandariza los nombres de productos para que todos los vendedores elijan de la misma lista oficial.")
+        
+        col_cat1, col_cat2 = st.columns([2, 1])
+        with col_cat1:
+            nuevo_prod_nombre = st.text_input("Nuevo Nombre de Producto para Catálogo Único", placeholder="Ej: Bleu de Chanel 100ml", key="in_cat_nom")
+        with col_cat2:
+            categoria_cat = st.text_input("Categoría", value="General", key="in_cat_cat")
+            
+        if st.button("➕ Agregar al Catálogo Único", type="secondary", key="btn_add_cat"):
+            if nuevo_prod_nombre.strip():
+                exito_c, msj_c = db.agregar_producto_catalogo(nuevo_prod_nombre, categoria_cat)
+                if exito_c:
+                    st.success(msj_c)
+                    st.rerun()
+                else:
+                    st.error(msj_c)
+            else:
+                st.warning("Escribe un nombre para el producto.")
+                
+        cat_lista = db.obtener_catalogo_maestro()
+        if cat_lista:
+            with st.expander(f"📋 Ver Catálogo Maestro Actual ({len(cat_lista)} productos)"):
+                df_cat = pd.DataFrame(cat_lista)
+                st.dataframe(df_cat[["id", "nombre", "categoria"]], use_container_width=True)
+
+        st.markdown("---")
+        st.subheader("🤝 Grupos de Inventario Compartido")
+        st.markdown("Vincular vendedores para que **sumen y compartan su inventario** en tiempo real.")
+
+        grupos_existentes = db.obtener_grupos_inventario()
+        vendedores_activos_df = db.obtener_vendedores()
+        
+        if not vendedores_activos_df.empty:
+            vendedores_dict_g = {row["email"]: f"{row.get('nombre', row['email'])} ({row['email']})" for _, row in vendedores_activos_df.iterrows()}
+            
+            with st.form("crear_grupo_form"):
+                nombre_grupo_in = st.text_input("Nombre del Grupo de Inventario", placeholder="Ej: Grupo Luz y Ana Paula")
+                vendedores_sel_g = st.multiselect("Seleccionar Vendedores Integrantes del Grupo", options=list(vendedores_dict_g.keys()), format_func=lambda x: vendedores_dict_g[x])
+                btn_crear_grp = st.form_submit_button("➕ Crear / Actualizar Grupo de Inventario")
+                
+                if btn_crear_grp:
+                    if not nombre_grupo_in:
+                        st.error("Ingresa un nombre para el grupo.")
+                    elif len(vendedores_sel_g) < 2:
+                        st.error("Selecciona al menos 2 vendedores para compartir inventario.")
+                    else:
+                        exito_g, msj_g = db.crear_grupo_inventario(nombre_grupo_in, vendedores_sel_g)
+                        if exito_g:
+                            st.success(msj_g)
+                            st.rerun()
+                        else:
+                            st.error(msj_g)
+
+        if grupos_existentes:
+            st.markdown("##### 👥 Grupos Compartidos Activos")
+            for g in grupos_existentes:
+                nombres_m = ", ".join([m['nombre'] for m in g['miembros']])
+                with st.expander(f"📌 {g['nombre_grupo']} ({len(g['miembros'])} integrantes: {nombres_m})"):
+                    st.write(f"**Integrantes**: {nombres_m}")
+                    if st.button(f"🗑️ Eliminar Grupo '{g['nombre_grupo']}'", key=f"del_grp_{g['id']}"):
+                        exito_del, msj_del = db.eliminar_grupo_inventario(g['id'])
+                        if exito_del:
+                            st.success(msj_del)
+                            st.rerun()
+                        else:
+                            st.error(msj_del)
                         
         st.markdown("---")
         st.subheader("🛒 Registrar Venta a Nombre de Vendedor")
