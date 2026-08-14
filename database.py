@@ -156,29 +156,31 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
             engine = create_engine(db_path, connect_args={"check_same_thread": False})
             Base.metadata.create_all(engine)
     
-    # Auto-migraciones para columnas añadidas en tablas pre-existentes
-    try:
-        with engine.connect() as conn:
-            for query_str in [
-                "ALTER TABLE usuarios ADD COLUMN patrocinador_email VARCHAR(100)",
-                "ALTER TABLE usuarios ADD COLUMN tipo_vendedor VARCHAR(50)",
-                "ALTER TABLE usuarios ADD COLUMN session_token VARCHAR(100)",
-                "ALTER TABLE usuarios ADD COLUMN grupo_inventario_id INTEGER",
-                "ALTER TABLE productos ADD COLUMN costo_compra FLOAT DEFAULT 0.0",
-                "ALTER TABLE productos ADD COLUMN proveedor VARCHAR(150)",
-                "ALTER TABLE productos ADD COLUMN lote VARCHAR(50) DEFAULT 'Lote 1'",
-                "ALTER TABLE productos ADD COLUMN fecha_ingreso TIMESTAMP",
-                "ALTER TABLE ventas ADD COLUMN costo_historico FLOAT DEFAULT 0.0",
-                "ALTER TABLE ventas ADD COLUMN comision_cobrada BOOLEAN DEFAULT FALSE",
-                "ALTER TABLE ventas ADD COLUMN fecha_cobro_comision TIMESTAMP"
-            ]:
+    # Auto-migraciones para columnas añadidas en tablas pre-existentes (Compatibles con PostgreSQL y SQLite)
+    columns_to_add = [
+        ("usuarios", "patrocinador_email", "VARCHAR(100)"),
+        ("usuarios", "tipo_vendedor", "VARCHAR(50) DEFAULT 'Crédito'"),
+        ("usuarios", "session_token", "VARCHAR(100)"),
+        ("usuarios", "grupo_inventario_id", "INTEGER"),
+        ("productos", "costo_compra", "FLOAT DEFAULT 0.0"),
+        ("productos", "proveedor", "VARCHAR(150) DEFAULT 'Generico'"),
+        ("productos", "lote", "VARCHAR(50) DEFAULT 'Lote 1'"),
+        ("productos", "fecha_ingreso", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+        ("ventas", "costo_historico", "FLOAT DEFAULT 0.0"),
+        ("ventas", "comision_cobrada", "BOOLEAN DEFAULT FALSE"),
+        ("ventas", "fecha_cobro_comision", "TIMESTAMP")
+    ]
+
+    for table_name, col_name, col_type in columns_to_add:
+        try:
+            with engine.connect() as conn:
                 try:
-                    conn.execute(text(query_str))
+                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
                     conn.commit()
                 except Exception:
-                    pass
-    except Exception:
-        pass
+                    conn.rollback()
+        except Exception:
+            pass
 
     SessionMaker = sessionmaker(bind=engine, expire_on_commit=False)
     return engine, SessionMaker
