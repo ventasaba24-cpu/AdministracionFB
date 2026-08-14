@@ -700,6 +700,63 @@ class DatabaseHandler:
         finally:
             session.close()
 
+    def _devolver_stock(self, session, vendedor_email, producto_nombre, cantidad):
+        """Devuelve stock al inventario considerando grupos de inventario compartido o restituyendo el producto."""
+        if cantidad <= 0 or not producto_nombre:
+            return
+        
+        usr = session.query(Usuario).filter_by(email=vendedor_email).first()
+        miembros = [vendedor_email]
+        if usr and usr.grupo_inventario_id:
+            miembros = [u.email for u in session.query(Usuario).filter_by(grupo_inventario_id=usr.grupo_inventario_id).all()]
+            
+        prod = session.query(Producto).filter(
+            Producto.nombre == producto_nombre,
+            Producto.vendedor_email.in_(miembros)
+        ).order_by(Producto.fecha_ingreso.desc(), Producto.id.desc()).first()
+        
+        if prod:
+            prod.stock += cantidad
+        else:
+            nuevo_p = Producto(
+                nombre=producto_nombre,
+                vendedor_email=vendedor_email,
+                stock=cantidad,
+                precio=0.0,
+                costo_compra=0.0,
+                proveedor="Restauración Corrección",
+                lote="Lote 1",
+                fecha_ingreso=get_mexico_time()
+            )
+            session.add(nuevo_p)
+            self.asegurar_en_catalogo(session, producto_nombre)
+
+    def _descontar_stock(self, session, vendedor_email, producto_nombre, cantidad):
+        """Descuenta stock del inventario considerando grupos compartidos."""
+        if cantidad <= 0 or not producto_nombre:
+            return
+            
+        usr = session.query(Usuario).filter_by(email=vendedor_email).first()
+        miembros = [vendedor_email]
+        if usr and usr.grupo_inventario_id:
+            miembros = [u.email for u in session.query(Usuario).filter_by(grupo_inventario_id=usr.grupo_inventario_id).all()]
+            
+        prods = session.query(Producto).filter(
+            Producto.nombre == producto_nombre,
+            Producto.vendedor_email.in_(miembros)
+        ).filter(Producto.stock > 0).order_by(Producto.fecha_ingreso.asc(), Producto.id.asc()).all()
+        
+        restante = cantidad
+        for p in prods:
+            if restante <= 0:
+                break
+            if p.stock >= restante:
+                p.stock -= restante
+                restante = 0
+            else:
+                restante -= p.stock
+                p.stock = 0
+
     def eliminar_venta(self, venta_id):
         session = self.get_session()
         try:
@@ -707,10 +764,8 @@ class DatabaseHandler:
             if not venta:
                 return False, "Venta no encontrada."
             
-            # Devolver stock siempre
-            mi_producto = session.query(Producto).filter_by(nombre=venta.producto_nombre, vendedor_email=venta.vendedor_email).first()
-            if mi_producto:
-                mi_producto.stock += venta.cantidad
+            # Devolver stock siempre considerando grupo compartido
+            self._devolver_stock(session, venta.vendedor_email, venta.producto_nombre, venta.cantidad)
                 
             # Logica Anti-fugas
             if venta.comision_cobrada:
@@ -745,17 +800,13 @@ class DatabaseHandler:
             monto_float = float(nuevo_monto)
             costo_float = float(nuevo_costo_proveedor)
             
-            # Si el producto o la cantidad cambió, ajustamos el stock matemáticamente
+            # Si el producto o la cantidad cambió, ajustamos el stock considerando grupos compartidos
             if venta.producto_nombre != nuevo_producto or venta.cantidad != cantidad_int:
-                # 1. Devolver el producto viejo al inventario
-                prod_viejo = session.query(Producto).filter_by(nombre=venta.producto_nombre, vendedor_email=venta.vendedor_email).first()
-                if prod_viejo:
-                    prod_viejo.stock += venta.cantidad
+                # 1. Devolver el producto viejo al inventario del grupo
+                self._devolver_stock(session, venta.vendedor_email, venta.producto_nombre, venta.cantidad)
                 
-                # 2. Descontar el producto nuevo del inventario
-                prod_nuevo = session.query(Producto).filter_by(nombre=nuevo_producto, vendedor_email=venta.vendedor_email).first()
-                if prod_nuevo:
-                    prod_nuevo.stock = max(0, prod_nuevo.stock - cantidad_int)
+                # 2. Descontar el producto nuevo del inventario del grupo
+                self._descontar_stock(session, venta.vendedor_email, nuevo_producto, cantidad_int)
                     
             venta.cliente = nuevo_cliente
             venta.producto_nombre = nuevo_producto
