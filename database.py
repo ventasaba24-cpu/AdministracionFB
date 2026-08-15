@@ -1201,13 +1201,52 @@ class DatabaseHandler:
         finally:
             session.close()
 
+    def actualizar_grupo_inventario(self, grupo_id, nuevo_nombre, nuevos_emails_vendedores):
+        """Actualiza el nombre y los vendedores integrantes de un grupo de inventario existente."""
+        session = self.get_session()
+        try:
+            grupo = session.query(GrupoInventario).filter_by(id=grupo_id).first()
+            if not grupo:
+                return False, "El grupo especificado no existe."
+                
+            nombre_clean = str(nuevo_nombre).strip()
+            if not nombre_clean:
+                return False, "El nombre del grupo es obligatorio."
+                
+            grupo.nombre_grupo = nombre_clean
+            
+            # Desvincular miembros anteriores de este grupo
+            miembros_anteriores = session.query(Usuario).filter_by(grupo_inventario_id=grupo_id).all()
+            for m in miembros_anteriores:
+                m.grupo_inventario_id = None
+                
+            # Asignar nuevos miembros seleccionados
+            for email in nuevos_emails_vendedores:
+                usr = session.query(Usuario).filter_by(email=email).first()
+                if usr:
+                    usr.grupo_inventario_id = grupo.id
+                    
+            session.commit()
+            return True, f"Grupo '{nombre_clean}' actualizado exitosamente con {len(nuevos_emails_vendedores)} integrantes."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error al actualizar grupo: {e}"
+        finally:
+            session.close()
+
     def crear_grupo_inventario(self, nombre_grupo, emails_vendedores):
-        """Crea un grupo de inventario y asigna los vendedores especificados."""
+        """Crea un grupo de inventario o actualiza si ya existe con ese nombre."""
         session = self.get_session()
         try:
             nombre_clean = str(nombre_grupo).strip()
             if not nombre_clean:
                 return False, "El nombre del grupo es obligatorio."
+            
+            # Si el grupo ya existe por nombre, se actualiza en lugar de duplicar
+            grupo_existente = session.query(GrupoInventario).filter(func.lower(GrupoInventario.nombre_grupo) == nombre_clean.lower()).first()
+            if grupo_existente:
+                session.close()
+                return self.actualizar_grupo_inventario(grupo_existente.id, nombre_clean, emails_vendedores)
             
             nuevo_grupo = GrupoInventario(nombre_grupo=nombre_clean)
             session.add(nuevo_grupo)
