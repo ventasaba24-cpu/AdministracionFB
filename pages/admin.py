@@ -1093,8 +1093,34 @@ def show():
             st.markdown("##### 👥 Grupos Compartidos Activos")
             for g in grupos_existentes:
                 nombres_m = ", ".join([m['nombre'] for m in g['miembros']])
+                miembros_actuales_emails = [m['email'] for m in g['miembros']]
+                
                 with st.expander(f"📌 {g['nombre_grupo']} ({len(g['miembros'])} integrantes: {nombres_m})"):
-                    st.write(f"**Integrantes**: {nombres_m}")
+                    st.write(f"**Integrantes actuales**: {nombres_m}")
+                    
+                    with st.form(key=f"edit_grp_form_{g['id']}"):
+                        nuevo_nom_g = st.text_input("Nombre del Grupo", value=g['nombre_grupo'], key=f"nom_in_{g['id']}")
+                        nuevos_miembros_g = st.multiselect(
+                            "Modificar Vendedores Integrantes",
+                            options=list(vendedores_dict_g.keys()),
+                            default=miembros_actuales_emails,
+                            format_func=lambda x: vendedores_dict_g[x],
+                            key=f"sel_m_{g['id']}"
+                        )
+                        btn_actualizar_m = st.form_submit_button("💾 Guardar Cambios del Grupo")
+                        
+                        if btn_actualizar_m:
+                            if len(nuevos_miembros_g) < 2:
+                                st.error("Un grupo compartido debe tener al menos 2 integrantes.")
+                            else:
+                                exito_u, msj_u = db.actualizar_grupo_inventario(g['id'], nuevo_nom_g, nuevos_miembros_g)
+                                if exito_u:
+                                    st.success(msj_u)
+                                    st.rerun()
+                                else:
+                                    st.error(msj_u)
+
+                    st.markdown("---")
                     if st.button(f"🗑️ Eliminar Grupo '{g['nombre_grupo']}'", key=f"del_grp_{g['id']}"):
                         exito_del, msj_del = db.eliminar_grupo_inventario(g['id'])
                         if exito_del:
