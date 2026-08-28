@@ -197,6 +197,296 @@ def fetch_ventas_cached():
     from database import DatabaseHandler
     return DatabaseHandler().obtener_tabla_ventas_completa()
 
+def render_tab_inteligencia(db):
+    st.subheader("💡 Inteligencia de Compras, Rentabilidad y Reabastecimiento")
+    st.markdown("Análisis estratégico en tiempo real para maximizar el margen de utilidad y tomar decisiones de recarga de inventario.")
+
+    try:
+        engine = db.engine
+        with engine.connect() as conn:
+            df_ventas = pd.read_sql("SELECT * FROM ventas", conn)
+            df_prods = pd.read_sql("SELECT * FROM productos", conn)
+            df_abonos = pd.read_sql("SELECT * FROM abonos", conn)
+            df_cat = pd.read_sql("SELECT * FROM catalogo_productos", conn)
+    except Exception as e:
+        st.error(f"Error cargando datos para Inteligencia: {e}")
+        return
+
+    if df_ventas.empty:
+        st.info("Aún no hay ventas registradas para generar analítica.")
+        return
+
+    # Normalización y Limpieza de Datos
+    df_ventas['producto_clean'] = df_ventas['producto_nombre'].str.strip()
+    df_prods['producto_clean'] = df_prods['nombre'].str.strip()
+
+    # Mapeo de Abonos por venta
+    abonos_map = df_abonos.groupby('venta_id')['monto_abono'].sum().to_dict() if not df_abonos.empty else {}
+    df_ventas['monto_abono'] = df_ventas['id'].map(abonos_map).fillna(0.0)
+    df_ventas['saldo_pendiente'] = df_ventas['monto_total'] - df_ventas['monto_abono']
+
+    # --- SECCIÓN 1: RESUMEN EJECUTIVO FINANCIERO REAL ---
+    total_ventas_dinero = df_ventas['monto_total'].sum()
+    total_piezas = df_ventas['cantidad'].sum()
+    total_costo_historico = (df_ventas['costo_historico'] * df_ventas['cantidad']).sum()
+    total_utilidad_bruta = total_ventas_dinero - total_costo_historico
+    margen_global_pct = (total_utilidad_bruta / total_ventas_dinero * 100) if total_ventas_dinero > 0 else 0.0
+
+    total_cobrado = df_ventas['monto_abono'].sum()
+    total_pendiente = df_ventas['saldo_pendiente'].sum()
+
+    st.markdown("### 📊 Resumen Ejecutivo Real (Supabase)")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("🛒 Ingresos Totales", f"${total_ventas_dinero:,.2f}", f"{total_piezas} piezas")
+    c2.metric("📦 Costo Inversión", f"${total_costo_historico:,.2f}")
+    c3.metric("✨ Utilidad Bruta", f"${total_utilidad_bruta:,.2f}", f"Margen: {margen_global_pct:.1f}%")
+    c4.metric("💳 Flujo Cobrado", f"${total_cobrado:,.2f}", f"{total_cobrado/total_ventas_dinero*100:.1f}%")
+    c5.metric("⏳ Cuentas por Cobrar", f"${total_pendiente:,.2f}", f"{total_pendiente/total_ventas_dinero*100:.1f}%", delta_color="inverse")
+
+    st.markdown("---")
+
+    # Resumen por producto
+    res = df_ventas.groupby('producto_clean').agg(
+        unidades_vendidas=('cantidad', 'sum'),
+        ingresos_totales=('monto_total', 'sum'),
+        costo_total=('costo_historico', lambda x: (x * df_ventas.loc[x.index, 'cantidad']).sum()),
+        monto_cobrado=('monto_abono', 'sum'),
+        saldo_pendiente=('saldo_pendiente', 'sum')
+    ).reset_index()
+
+    res['costo_promedio'] = np.where(res['unidades_vendidas'] > 0, res['costo_total'] / res['unidades_vendidas'], 0.0)
+    res['precio_promedio'] = np.where(res['unidades_vendidas'] > 0, res['ingresos_totales'] / res['unidades_vendidas'], 0.0)
+    res['ganancia_total'] = res['ingresos_totales'] - res['costo_total']
+    res['ganancia_unitaria'] = res['precio_promedio'] - res['costo_promedio']
+    res['margen_pct'] = np.where(res['ingresos_totales'] > 0, (res['ganancia_total'] / res['ingresos_totales']) * 100, 0.0)
+
+    # Stock actual
+    stock_res = df_prods.groupby('producto_clean').agg(
+        stock_actual=('stock', 'sum'),
+        costo_stock=('costo_compra', 'mean'),
+        precio_stock=('precio', 'mean')
+    ).reset_index()
+
+    full_df = pd.merge(res, stock_res, on='producto_clean', how='outer')
+    full_df['unidades_vendidas'] = full_df['unidades_vendidas'].fillna(0).astype(int)
+    full_df['stock_actual'] = full_df['stock_actual'].fillna(0).astype(int)
+    full_df['ingresos_totales'] = full_df['ingresos_totales'].fillna(0.0)
+    full_df['ganancia_total'] = full_df['ganancia_total'].fillna(0.0)
+
+    full_df['costo_unitario_final'] = np.where(full_df['costo_promedio'] > 0, full_df['costo_promedio'], full_df['costo_stock'].fillna(0.0))
+    full_df['precio_unitario_final'] = np.where(full_df['precio_promedio'] > 0, full_df['precio_promedio'], full_df['precio_stock'].fillna(0.0))
+    full_df['margen_pct_final'] = np.where(
+        full_df['precio_unitario_final'] > 0,
+        ((full_df['precio_unitario_final'] - full_df['costo_unitario_final']) / full_df['precio_unitario_final']) * 100,
+        0.0
+    )
+
+    # Estacionalidad / Temporada
+    def asignar_temporada(nombre):
+        nl = str(nombre).lower()
+        if any(k in nl for k in ['light blue', 'orientica amber', 'lacoste rose', 'nautica', 'ck one', 'tommy', 'body vs', 'ice', 'cool water', 'fresh']):
+            return '☀️ Primavera - Verano (Frescos / Cítricos / Florales)'
+        elif any(k in nl for k in ['khamrah', 'emeer', 'erba pura', 'amber oud', 'scandal', 'bad boy', 'tiramisu', 'nitro red', 'euphoria', 'omnia', 'passione', 'gourmand', 'amber']):
+            return '🍂 Otoño - Invierno (Dulces / Cálidos / Especiados)'
+        else:
+            return '🔄 Atemporales (Versátiles / Todo el Año)'
+
+    full_df['temporada'] = full_df['producto_clean'].apply(asignar_temporada)
+
+    # Marca
+    def extraer_marca(nombre):
+        nl = str(nombre).lower()
+        if 'yara' in nl or 'lattafa' in nl or 'khamrah' in nl or 'eclair' in nl or 'fakhar' in nl:
+            return 'Lattafa'
+        elif 'amber oud' in nl or 'al haramain' in nl or 'al haram' in nl or 'laventure' in nl:
+            return 'Al Haramain'
+        elif 'orientica' in nl:
+            return 'Orientica'
+        elif 'rasasi' in nl or 'hawas' in nl:
+            return 'Rasasi'
+        elif 'afnan' in nl or '9pm' in nl:
+            return 'Afnan'
+        elif 'club de nuit' in nl or 'armaf' in nl:
+            return 'Armaf'
+        elif 'carolina herrera' in nl or '212' in nl or 'bad boy' in nl or 'good girl' in nl:
+            return 'Carolina Herrera'
+        elif 'dolce' in nl or 'light blue' in nl:
+            return 'Dolce & Gabbana'
+        elif 'lacoste' in nl:
+            return 'Lacoste'
+        elif 'moschino' in nl or 'toy' in nl:
+            return 'Moschino'
+        elif 'hallowen' in nl or 'halloween' in nl:
+            return 'Halloween'
+        elif 'guess' in nl:
+            return 'Guess'
+        elif 'ck' in nl or 'calvin' in nl or 'euphoria' in nl or 'eternity' in nl:
+            return 'Calvin Klein'
+        else:
+            return 'Otras Marcas'
+
+    full_df['marca'] = full_df['producto_clean'].apply(extraer_marca)
+
+    # --- SECCIÓN 2: FILTRO Y RECOMENDACIÓN POR TEMPORADA ---
+    st.markdown("### 🌤️ Recomendación y Filtro por Temporada / Clima")
+    st.caption("Filtra y planifica tu catálogo según la temporada del año (Verano vs Otoño-Invierno).")
+    
+    opcion_temp = st.radio(
+        "Selecciona Temporada a Analizar:",
+        ["Todas las Temporadas", "🍂 Otoño - Invierno (Dulces / Cálidos / Especiados)", "☀️ Primavera - Verano (Frescos / Cítricos / Florales)", "🔄 Atemporales (Versátiles / Todo el Año)"],
+        horizontal=True
+    )
+
+    if opcion_temp != "Todas las Temporadas":
+        df_filtered = full_df[full_df['temporada'] == opcion_temp].copy()
+    else:
+        df_filtered = full_df.copy()
+
+    # --- SECCIÓN 3: TOP PRODUCTOS VENDIDOS Y MEJOR MARGEN ---
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        st.markdown("#### 🏆 Top Productos Más Vendidos (Piezas)")
+        top_volumen = df_filtered.sort_values(by='unidades_vendidas', ascending=False).head(10)
+        if not top_volumen.empty:
+            df_display_vol = top_volumen[['producto_clean', 'unidades_vendidas', 'stock_actual', 'ingresos_totales', 'margen_pct_final']].copy()
+            df_display_vol.columns = ['Producto', 'Vendidos', 'Stock', 'Ingresos ($)', 'Margen %']
+            df_display_vol['Ingresos ($)'] = df_display_vol['Ingresos ($)'].map("${:,.2f}".format)
+            df_display_vol['Margen %'] = df_display_vol['Margen %'].map("{:.1f}%".format)
+            st.dataframe(df_display_vol, use_container_width=True, hide_index=True)
+
+    with col_t2:
+        st.markdown("#### 💎 Top Productos con Mejor Margen (%)")
+        df_con_v = df_filtered[df_filtered['unidades_vendidas'] > 0].copy()
+        top_margen = df_con_v.sort_values(by='margen_pct_final', ascending=False).head(10)
+        if not top_margen.empty:
+            df_display_mar = top_margen[['producto_clean', 'precio_unitario_final', 'costo_unitario_final', 'ganancia_unitaria', 'margen_pct_final']].copy()
+            df_display_mar.columns = ['Producto', 'P. Venta ($)', 'Costo ($)', 'Ganancia/U ($)', 'Margen %']
+            df_display_mar['P. Venta ($)'] = df_display_mar['P. Venta ($)'].map("${:,.2f}".format)
+            df_display_mar['Costo ($)'] = df_display_mar['Costo ($)'].map("${:,.2f}".format)
+            df_display_mar['Ganancia/U ($)'] = df_display_mar['Ganancia/U ($)'].map("${:,.2f}".format)
+            df_display_mar['Margen %'] = df_display_mar['Margen %'].map("{:.1f}%".format)
+            st.dataframe(df_display_mar, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    # --- SECCIÓN 4: CONTROL DE STOCK ESTANCADO ---
+    st.markdown("### ⚠️ Control de Stock Estancado (Capital Atrapado)")
+    df_estancados = full_df[(full_df['stock_actual'] >= 3) & (full_df['unidades_vendidas'] <= 1)].copy()
+    if not df_estancados.empty:
+        capital_atrapado = (df_estancados['stock_actual'] * df_estancados['costo_unitario_final']).sum()
+        st.warning(f"⚠️ **Atención**: Hay {len(df_estancados)} productos con stock igual o mayor a 3 piezas y pocas/nulas ventas. Capital total inmovilizado: **${capital_atrapado:,.2f} MXN**.")
+        
+        df_est_disp = df_estancados[['producto_clean', 'stock_actual', 'unidades_vendidas', 'costo_unitario_final', 'precio_unitario_final']].copy()
+        df_est_disp.columns = ['Producto', 'Stock Detenido', 'Ventas', 'Costo Unitario ($)', 'Precio Lista ($)']
+        df_est_disp['Costo Unitario ($)'] = df_est_disp['Costo Unitario ($)'].map("${:,.2f}".format)
+        df_est_disp['Precio Lista ($)'] = df_est_disp['Precio Lista ($)'].map("${:,.2f}".format)
+        st.dataframe(df_est_disp, use_container_width=True, hide_index=True)
+        st.info("💡 **Sugerencia de Liquidación**: Se recomienda realizar promociones de remate (ej: 15%-20% de descuento) o armar paquetes para recuperar el flujo de efectivo atascado.")
+    else:
+        st.success("✅ No se detectan productos con stock estancado crítico.")
+
+    st.markdown("---")
+
+    # --- SECCIÓN 5: GUÍA DE REABASTECIMIENTO TOP 20 Y DESCARGA PARA PROVEEDOR ---
+    st.markdown("### 🛒 Guía de Reabastecimiento Top 20 (Smart Reorder)")
+    st.caption("Productos de alta rotación y alto margen con stock agotado o crítico (<= 1 pieza).")
+
+    df_reorder = full_df[(full_df['stock_actual'] <= 1) & (full_df['unidades_vendidas'] > 0)].sort_values(by=['unidades_vendidas', 'margen_pct_final'], ascending=False).head(20).copy()
+
+    if not df_reorder.empty:
+        df_reorder['Sugerido_Recompra'] = np.where(df_reorder['unidades_vendidas'] >= 5, 5, np.where(df_reorder['unidades_vendidas'] >= 3, 3, 2))
+        df_reorder['Costo_Total_Pedido'] = df_reorder['Sugerido_Recompra'] * df_reorder['costo_unitario_final']
+        df_reorder['Ganancia_Proyectada'] = df_reorder['Sugerido_Recompra'] * (df_reorder['precio_unitario_final'] - df_reorder['costo_unitario_final'])
+
+        df_reo_disp = df_reorder[['producto_clean', 'unidades_vendidas', 'stock_actual', 'costo_unitario_final', 'precio_unitario_final', 'Sugerido_Recompra', 'Costo_Total_Pedido', 'Ganancia_Proyectada']].copy()
+        df_reo_disp.columns = ['Producto', 'Histórico Vendidos', 'Stock Actual', 'Costo Unit. ($)', 'Precio Venta ($)', 'Piezas a Pedir', 'Costo Pedido ($)', 'Ganancia Est. ($)']
+        
+        df_reo_show = df_reo_disp.copy()
+        df_reo_show['Costo Unit. ($)'] = df_reo_show['Costo Unit. ($)'].map("${:,.2f}".format)
+        df_reo_show['Precio Venta ($)'] = df_reo_show['Precio Venta ($)'].map("${:,.2f}".format)
+        df_reo_show['Costo Pedido ($)'] = df_reo_show['Costo Pedido ($)'].map("${:,.2f}".format)
+        df_reo_show['Ganancia Est. ($)'] = df_reo_show['Ganancia Est. ($)'].map("${:,.2f}".format)
+        
+        st.dataframe(df_reo_show, use_container_width=True, hide_index=True)
+
+        csv_data = df_reo_disp[['Producto', 'Piezas a Pedir', 'Costo Unit. ($)', 'Costo Pedido ($)']].to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Descargar Pedido para Proveedor (CSV)",
+            data=csv_data,
+            file_name="Pedido_Sugerido_Proveedores.csv",
+            mime="text/csv",
+            type="primary"
+        )
+
+    st.markdown("---")
+
+    # --- SECCIÓN 6: SIMULADOR DE PRESUPUESTO PARA COMPRAS ---
+    st.markdown("### 🧮 Simulador de Presupuesto para Compras")
+    presupuesto = st.number_input("Ingresa tu Presupuesto Disponible ($ MXN):", min_value=1000, max_value=500000, value=15000, step=1000)
+
+    if not df_reorder.empty and presupuesto > 0:
+        pedidos_simulados = []
+        acumulado = 0.0
+        for _, row in df_reorder.iterrows():
+            costo_u = row['costo_unitario_final']
+            if costo_u <= 0:
+                continue
+            cant_posible = int((presupuesto - acumulado) // costo_u)
+            cant_pedir = min(int(row['Sugerido_Recompra']), cant_posible)
+            if cant_pedir > 0:
+                subtotal = cant_pedir * costo_u
+                ganancia_sub = cant_pedir * (row['precio_unitario_final'] - costo_u)
+                acumulado += subtotal
+                pedidos_simulados.append({
+                    'Producto': row['producto_clean'],
+                    'Piezas': cant_pedir,
+                    'Costo Unitario ($)': costo_u,
+                    'Inversión Subtotal ($)': subtotal,
+                    'Ganancia Est. ($)': ganancia_sub
+                })
+            if acumulado >= presupuesto:
+                break
+
+        if pedidos_simulados:
+            df_sim = pd.DataFrame(pedidos_simulados)
+            inversion_total = df_sim['Inversión Subtotal ($)'].sum()
+            ganancia_total_sim = df_sim['Ganancia Est. ($)'].sum()
+            roi_sim = (ganancia_total_sim / inversion_total * 100) if inversion_total > 0 else 0
+
+            col_s1, col_s2, col_s3 = st.columns(3)
+            col_s1.metric("💰 Presupuesto Utilizado", f"${inversion_total:,.2f}", f"Sobrante: ${presupuesto - inversion_total:,.2f}")
+            col_s2.metric("✨ Ganancia Proyectada", f"${ganancia_total_sim:,.2f}")
+            col_s3.metric("📈 ROI Proyectado", f"{roi_sim:.1f}%", "Retorno sobre Inversión")
+
+            df_sim_show = df_sim.copy()
+            df_sim_show['Costo Unitario ($)'] = df_sim_show['Costo Unitario ($)'].map("${:,.2f}".format)
+            df_sim_show['Inversión Subtotal ($)'] = df_sim_show['Inversión Subtotal ($)'].map("${:,.2f}".format)
+            df_sim_show['Ganancia Est. ($)'] = df_sim_show['Ganancia Est. ($)'].map("${:,.2f}".format)
+            st.dataframe(df_sim_show, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    # --- SECCIÓN 7: GRÁFICOS POR MARCA ---
+    st.markdown("### 📈 Ganancias y Ventas por Marca de Perfume")
+    df_marcas = full_df.groupby('marca').agg(
+        ganancia_total=('ganancia_total', 'sum'),
+        ingresos_totales=('ingresos_totales', 'sum'),
+        unidades_vendidas=('unidades_vendidas', 'sum')
+    ).reset_index()
+    df_marcas = df_marcas[df_marcas['ganancia_total'] > 0].sort_values(by='ganancia_total', ascending=False)
+
+    if not df_marcas.empty:
+        fig = px.bar(
+            df_marcas,
+            x='marca',
+            y='ganancia_total',
+            title='Ganancia Neta Acumulada por Marca ($ MXN)',
+            labels={'marca': 'Marca', 'ganancia_total': 'Ganancia ($)'},
+            color='ganancia_total',
+            color_continuous_scale='Viridis'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
 def show():
     # Esta página requerirá rol Admin
     if st.session_state.user_role != "Admin":
@@ -217,7 +507,20 @@ def show():
     except:
         df_gastos = pd.DataFrame() # Fallback temporal si la tabla no se crea a tiempo
     
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["📊 KPIs", "📦 Inventario", "💵 Abonos/Pagos", "✉️ Vendedores", "📝 Correcciones", "📉 Gastos y Egresos", "🔍 Ventas Cerradas", "🎭 Simular Usuario"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+        "📊 KPIs", 
+        "💡 Inteligencia y Reabastecimiento",
+        "📦 Inventario", 
+        "💵 Abonos/Pagos", 
+        "✉️ Vendedores", 
+        "📝 Correcciones", 
+        "📉 Gastos y Egresos", 
+        "🔍 Ventas Cerradas", 
+        "🎭 Simular Usuario"
+    ])
+
+    with tab2:
+        render_tab_inteligencia(db)
 
     with tab1:
         st.subheader("Indicadores Clave de Desempeño")
