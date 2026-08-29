@@ -974,7 +974,7 @@ def show():
         else:
             st.info("No hay ventas registradas aún.")
 
-    with tab2:
+    with tab3:
         st.subheader("💡 Inteligencia de Compras y Rotación")
         
         if not df_todas.empty:
@@ -1165,7 +1165,7 @@ def show():
         else:
             st.warning("No hay vendedores registrados en el sistema.")
 
-    with tab3:
+    with tab4:
         st.subheader("Registrar Nuevo Abono a Cuenta")
         # Desplegable inteligente de deudores
         # df_todas lo reusamos de arriba
@@ -1279,7 +1279,7 @@ def show():
         else:
             st.info("No hay ventas en el sistema.")
 
-    with tab4:
+    with tab5:
         st.subheader("Invitar Nuevo Vendedor al Sistema")
         st.markdown("Registra al vendedor y envíale automáticamente su acceso al correo de Gmail.")
 
@@ -1524,7 +1524,7 @@ def show():
         else:
             st.info("Aún no tienes vendedores registrados en el sistema.")
 
-    with tab5:
+    with tab6:
         st.subheader("🕵️ Buscador Inteligente para Correcciones")
         st.markdown("Busca cualquier registro rápidamente para modificarlo o eliminarlo permanentemente del sistema sin dejar basura ni descuadrar tus inventarios.")
         tipo_correccion = st.radio("¿Qué tipo de registro deseas corregir?", ["Ventas", "Abonos"], horizontal=True)
@@ -1668,7 +1668,7 @@ def show():
                 else:
                     st.warning("No se encontró ningún Abono coincidente.")
 
-    with tab6:
+    with tab7:
         st.subheader("Control de Gastos y Egresos Operativos")
         st.markdown("Registra todos los gastos ajenos al costo de producto base para tener un control exacto de tu Flujo Libre.")
         
@@ -1741,7 +1741,7 @@ def show():
             else:
                 st.info("Aún no tienes gastos registrados.")
 
-    with tab7:
+    with tab8:
         st.subheader("🔍 Buscador de Ventas Cerradas (Pagadas al 100%)")
         st.markdown("Encuentra rápidamente el historial de cualquier venta liquidada buscando por cliente, vendedor o producto.")
         
@@ -1813,7 +1813,7 @@ def show():
         else:
             st.info("No hay ventas cerradas (pagadas al 100%) en el sistema todavía.")
 
-    with tab8:
+    with tab9:
         st.subheader("🎭 Modo Simulación de Usuarios (Impersonation)")
         st.markdown("Selecciona a cualquier Vendedor o Contador para **iniciar sesión temporalmente como ellos**. Podrás ver todo exactamente como ellos lo ven desde sus dispositivos, e incluso registrar ventas o hacer cambios en su nombre.")
         
