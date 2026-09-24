@@ -922,8 +922,9 @@ class DatabaseHandler:
                  minutos_restantes = max(1, int(resta.total_seconds() / 60))
                  return False, None, None, f"Por seguridad tecnológica, este acceso ha sido temporalmente suspendido. Intente de nuevo en {minutos_restantes} minutos."
              
-             # Buscar existencial
-             usr = session.query(Usuario).filter_by(email=email).first()
+             # Buscar existencial (case-insensitive e ignorando espacios accidentales al escribir)
+             from sqlalchemy import func
+             usr = session.query(Usuario).filter(func.lower(Usuario.email) == func.lower(str(email).strip())).first()
              
              # Fallo intencional temprano si no existe el correo
              if not usr:
