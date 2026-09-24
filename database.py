@@ -203,7 +203,7 @@ class DatabaseHandler:
                 admin_user = Usuario(
                     nombre="Administrador Principal",
                     email="admin@empresa.com",
-                    password=generate_password_hash("admin"),
+                    password=generate_password_hash("admin", method="pbkdf2:sha256"),
                     rol="Admin",
                     tasa_comision=0.0
                 )
@@ -216,7 +216,7 @@ class DatabaseHandler:
                 vendedor_user = Usuario(
                     nombre="Vendedor de Demo",
                     email="vendedor@demo.com",
-                    password=generate_password_hash("123"),
+                    password=generate_password_hash("123", method="pbkdf2:sha256"),
                     rol="Vendedor",
                     tasa_comision=0.10
                 )
@@ -930,16 +930,24 @@ class DatabaseHandler:
                  self.registrar_fallo(session, id_seguridad)
                  return False, None, None, "Credenciales inválidas."
                  
-             # Validar el hash
-             if not check_password_hash(usr.password, password):
-                 # Chequeo legacy temporal por si hay contraseñas en texto plano de BD viejas (opcional pero ayuda en transición)
-                 if usr.password == password:
-                     # Migración silenciosa
-                     usr.password = generate_password_hash(password)
+             # Validar el hash o texto plano
+             es_valido = False
+             if usr.password == password:
+                 es_valido = True
+                 try:
+                     usr.password = generate_password_hash(password, method="pbkdf2:sha256")
                      session.commit()
-                 else:
-                     self.registrar_fallo(session, id_seguridad)
-                     return False, None, None, "Credenciales inválidas."
+                 except Exception:
+                     session.rollback()
+             else:
+                 try:
+                     es_valido = check_password_hash(usr.password, password)
+                 except Exception:
+                     es_valido = False
+
+             if not es_valido:
+                 self.registrar_fallo(session, id_seguridad)
+                 return False, None, None, "Credenciales inválidas."
              
              # Si llegó aquí, todo está bien
              import uuid
@@ -996,7 +1004,7 @@ class DatabaseHandler:
             nuevo = Usuario(
                 nombre=nombre,
                 email=email,
-                password=generate_password_hash(password),
+                password=generate_password_hash(password, method="pbkdf2:sha256"),
                 rol="Vendedor",
                 tasa_comision=comision/100.0, # Guardar directo como tasa decimal (10% -> 0.10)
                 patrocinador_email=patrocinador_email,
