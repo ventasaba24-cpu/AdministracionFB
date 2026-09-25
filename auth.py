@@ -97,6 +97,8 @@ def check_password():
         else:
             db_type = "PostgreSQL Nube" if "postgresql" in str(db.engine.url) else "SQLite Respaldo Local"
             st.error(f"❌ {msj_respuesta} (Base de Datos activa: {db_type})")
+            if "db_conn_error" in st.session_state and st.session_state["db_conn_error"]:
+                st.warning(f"⚠️ Detalle de conexión Supabase: {st.session_state['db_conn_error']}")
 
     return False
 
