@@ -122,6 +122,18 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
             db_url = st.secrets["SUPABASE_URL"]
             if db_url.startswith("postgres://"):
                 db_url = db_url.replace("postgres://", "postgresql://", 1)
+            
+            # Codificar caracteres especiales en la contraseña de la URL (como '+', '$', '!')
+            try:
+                import urllib.parse
+                from sqlalchemy.engine.url import make_url
+                u_obj = make_url(db_url)
+                if u_obj.password:
+                    enc_p = urllib.parse.quote_plus(u_obj.password)
+                    u_obj = u_obj._replace(password=enc_p)
+                    db_url = u_obj.render_as_string(hide_password=False)
+            except Exception:
+                pass
             db_path = db_url
     except Exception:
         pass
