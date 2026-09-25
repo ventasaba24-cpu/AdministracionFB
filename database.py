@@ -136,15 +136,11 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
             if db_url.startswith("postgres://"):
                 db_url = db_url.replace("postgres://", "postgresql://", 1)
             
-            # Codificar caracteres especiales en la contraseña de la URL (como '+', '$', '!')
+            # Sanitizar URL mediante SQLAlchemy sin duplicar codificación percent-encode
             try:
-                import urllib.parse
                 from sqlalchemy.engine.url import make_url
                 u_obj = make_url(db_url)
-                if u_obj.password:
-                    enc_p = urllib.parse.quote_plus(u_obj.password)
-                    u_obj = u_obj._replace(password=enc_p)
-                    db_url = u_obj.render_as_string(hide_password=False)
+                db_url = u_obj.render_as_string(hide_password=False)
             except Exception:
                 pass
             db_path = db_url
@@ -175,8 +171,17 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
                         pass
                 conn.commit()
             Base.metadata.create_all(engine)
+            try:
+                if "db_conn_error" in st.session_state:
+                    del st.session_state["db_conn_error"]
+            except Exception:
+                pass
         except Exception as e:
             print(f"⚠️ Fallo al conectar a PostgreSQL ({e}). Conectando a SQLite local de respaldo...")
+            try:
+                st.session_state["db_conn_error"] = str(e)
+            except Exception:
+                pass
             db_path = default_path
             engine = create_engine(db_path, connect_args={"check_same_thread": False})
             Base.metadata.create_all(engine)
