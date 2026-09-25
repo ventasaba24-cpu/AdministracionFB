@@ -95,7 +95,8 @@ def check_password():
             box_login.empty() # Destruir formulario de la pantalla
             return True 
         else:
-            st.error(f"❌ {msj_respuesta}")
+            db_type = "PostgreSQL Nube" if "postgresql" in str(db.engine.url) else "SQLite Respaldo Local"
+            st.error(f"❌ {msj_respuesta} (Base de Datos activa: {db_type})")
 
     return False
 
