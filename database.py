@@ -118,8 +118,21 @@ class Gasto(Base):
 def init_db_connection(default_path='sqlite:///erp_database.db'):
     db_path = default_path
     try:
+        db_url = None
         if "SUPABASE_URL" in st.secrets:
             db_url = st.secrets["SUPABASE_URL"]
+        elif "DATABASE_URL" in st.secrets:
+            db_url = st.secrets["DATABASE_URL"]
+        else:
+            # Buscar cualquier clave que contenga SUPABASE, POSTGRES o DATABASE ignorando mayúsculas
+            for k in st.secrets.keys():
+                if "SUPABASE" in str(k).upper() or "POSTGRES" in str(k).upper() or "DATABASE" in str(k).upper():
+                    val = st.secrets[k]
+                    if isinstance(val, str) and ("postgres" in val.lower() or "supabase" in val.lower()):
+                        db_url = val
+                        break
+
+        if db_url:
             if db_url.startswith("postgres://"):
                 db_url = db_url.replace("postgres://", "postgresql://", 1)
             
