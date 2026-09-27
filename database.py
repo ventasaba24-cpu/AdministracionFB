@@ -698,7 +698,7 @@ class DatabaseHandler:
                  # === METRICAS FINANCIERAS NETAS ===
                  iva_generado = v.monto_total * 0.16
                  costo_bases = getattr(v, "costo_historico", 0.0) # Asegurando compatibilidad con DBs previas
-                 utilidad_neta = v.monto_total - iva_generado - costo_bases - comision_ganada - comision_red
+                 utilidad_neta = v.monto_total - iva_generado - costo_bases - comision_ganada
                  
                  fila = {
                      "ID_Venta": v.id,
