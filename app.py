@@ -57,6 +57,15 @@ def main():
     if not check_password():
         st.stop()  # Detener la ejecución si no está logueado
 
+    # Respaldo automático diario (Opción A: Ejecutar una vez al día en el primer inicio)
+    try:
+        from database import init_db_connection
+        from backup import verificar_y_ejecutar_respaldo_diario
+        db_auto, _ = init_db_connection()
+        verificar_y_ejecutar_respaldo_diario(db_auto)
+    except Exception as e_auto:
+        pass
+
     # Si llega aquí, está logueado
     # Lógica de "Modo Simulación" (Impersonation)
     if st.session_state.get("admin_impersonating", False):
