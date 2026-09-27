@@ -1372,6 +1372,52 @@ def show():
                         st.error(f"Error al registrar en la base de datos: {msj_db}")
 
         st.markdown("---")
+        st.subheader("👥 Equipo de Vendedores y Registro de Actividad")
+        st.markdown("Monitorea a tus colaboradores, su modalidad de trabajo y la fecha de su **último inicio de sesión**.")
+        
+        df_vnd_lista = db.obtener_vendedores()
+        if not df_vnd_lista.empty:
+            for _, v_row in df_vnd_lista.iterrows():
+                u_login = v_row.get("ultimo_login", None)
+                txt_login = "⚪ *Sin inicios de sesión registrados*"
+                if pd.notna(u_login) and u_login:
+                    try:
+                        if isinstance(u_login, str):
+                            u_dt = datetime.datetime.fromisoformat(u_login)
+                        else:
+                            u_dt = u_login
+                        ahora_m = get_mexico_time()
+                        diff_m = ahora_m - u_dt
+                        if diff_m.days == 0:
+                            txt_login = f"🟢 **Hoy a las {u_dt.strftime('%I:%M %p')}**"
+                        elif diff_m.days == 1:
+                            txt_login = f"🟡 **Ayer a las {u_dt.strftime('%I:%M %p')}**"
+                        else:
+                            txt_login = f"🔴 **Hace {diff_m.days} días** ({u_dt.strftime('%d/%m/%Y %I:%M %p')})"
+                    except Exception:
+                        txt_login = f"🗓️ {u_login}"
+                
+                comision_pct = int(float(v_row.get('tasa_comision', 0.1)) * 100) if v_row.get('tasa_comision') is not None else 10
+                st.markdown(f"""
+                <div style="background-color: #ffffff; padding: 12px 16px; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <span style="font-size: 16px; font-weight: bold; color: #0f172a;">👤 {v_row.get('nombre', 'Sin nombre')}</span>
+                            <span style="font-size: 13px; color: #64748b; margin-left: 6px;">({v_row.get('email', '')})</span>
+                        </div>
+                        <div style="font-size: 12px; background-color: #f1f5f9; padding: 4px 10px; border-radius: 6px; color: #334155;">
+                            Comisión: <b>{comision_pct}%</b> | Modalidad: <b>{v_row.get('tipo_vendedor', 'Crédito')}</b>
+                        </div>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 13px; color: #334155; border-top: 1px dashed #e2e8f0; padding-top: 6px;">
+                        🔑 <b>Última Conexión:</b> {txt_login}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No hay vendedores registrados aún.")
+
+        st.markdown("---")
         st.subheader("📚 Catálogo Único de Productos")
         st.markdown("Estandariza los nombres de productos para que todos los vendedores elijan de la misma lista oficial.")
         
