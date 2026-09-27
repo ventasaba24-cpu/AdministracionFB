@@ -94,7 +94,8 @@ def generar_excel_respaldo_completo(db):
                 "Patrocinador_Email": u.patrocinador_email,
                 "Tipo_Vendedor": u.tipo_vendedor,
                 "Session_Token": u.session_token,
-                "Grupo_Inventario_ID": u.grupo_inventario_id
+                "Grupo_Inventario_ID": u.grupo_inventario_id,
+                "Ultimo_Login": u.ultimo_login
             })
         df_users = pd.DataFrame(datos_users)
 
