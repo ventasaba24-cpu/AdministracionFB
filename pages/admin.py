@@ -525,6 +525,39 @@ def show():
 
     with tab1:
         st.subheader("Indicadores Clave de Desempeño")
+        
+        # --- SECCIÓN: RESPALDOS Y SEGURIDAD ---
+        with st.expander("🛡️ Control de Respaldos y Seguridad (Google Drive & Excel)", expanded=False):
+            st.markdown("Genera copias de seguridad de toda la base de datos en tiempo real.")
+            b_col1, b_col2 = st.columns(2)
+            with b_col1:
+                try:
+                    from backup import generar_excel_respaldo_completo
+                    excel_data = generar_excel_respaldo_completo(db)
+                    import datetime
+                    nom_f = f"Respaldo_FB_Catalogo_{datetime.datetime.now().strftime('%Y-%m-%d')}.xlsx"
+                    st.download_button(
+                        label="📥 Descargar Respaldo Completo (Excel)",
+                        data=excel_data,
+                        file_name=nom_f,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                except Exception as e_bk:
+                    st.error(f"Error preparando Excel: {e_bk}")
+            with b_col2:
+                if st.button("☁️ Sincronizar Respaldo a Google Drive Ahora", use_container_width=True):
+                    with st.spinner("Subiendo respaldo a tu Google Drive..."):
+                        try:
+                            from backup import subir_respaldo_a_google_drive
+                            exito_g, msj_g = subir_respaldo_a_google_drive(db)
+                            if exito_g:
+                                st.success(msj_g)
+                            else:
+                                st.warning(msj_g)
+                        except Exception as e_drive:
+                            st.error(f"Error conectando a Google Drive: {e_drive}")
+        st.markdown("<br>", unsafe_allow_html=True)
         if not df_todas.empty:
             ventas_totales = df_todas["Total_Venta"].sum()
             utilidad_neta_base = df_todas["Utilidad_Neta"].sum()
