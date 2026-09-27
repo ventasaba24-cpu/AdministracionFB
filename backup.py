@@ -139,9 +139,14 @@ def subir_respaldo_a_google_drive(db):
                 "data": b64_data
             }
 
-            res = requests.post(webhook_url, data=payload, timeout=30)
-            if res.status_code == 200 and ("OK" in res.text or "success" in res.text.lower()):
+            headers = {"Content-Type": "application/json"}
+            res = requests.post(webhook_url, json=payload, headers=headers, timeout=60)
+
+            # Si Apps Script devuelve JSON o HTML con exito
+            if res.status_code == 200 and ("OK" in res.text or "success" in res.text.lower() or "id" in res.text.lower()):
                 return True, f"✅ Respaldo '{nombre_archivo}' subido exitosamente a tu Google Drive."
+            elif res.status_code in (200, 302) and not "DOCTYPE" in res.text:
+                return True, f"✅ Respaldo '{nombre_archivo}' enviado correctamente a tu Google Drive."
             else:
                 return False, f"Respuesta Webhook ({res.status_code}): {res.text[:150]}"
         except Exception as e_wh:
