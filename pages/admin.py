@@ -122,20 +122,21 @@ def dialog_gestion_inventario(db, vendedor_email, prod=None):
     
     # Obtener catálogo maestro
     cat_maestro = db.obtener_catalogo_maestro()
-    opciones_cat = [p['nombre'] for p in cat_maestro]
-    opciones_cat.append("➕ Otro / Nuevo Producto Estandarizado")
+    nombres_cat = [p['nombre'] for p in cat_maestro]
+    opciones_cat = ["✨ + Escribir Producto Nuevo (Auto-Unificado)"] + nombres_cat
     
     val_prod_actual = prod['nombre'] if prod is not None else ""
     idx_def = 0
-    if val_prod_actual in [p['nombre'] for p in cat_maestro]:
-        idx_def = [p['nombre'] for p in cat_maestro].index(val_prod_actual)
+    if val_prod_actual in nombres_cat:
+        idx_def = nombres_cat.index(val_prod_actual) + 1
     elif val_prod_actual:
-        idx_def = len(opciones_cat) - 1
+        idx_def = 0
         
-    prod_sel = st.selectbox("Seleccionar del Catálogo Único", opciones_cat, index=idx_def)
+    prod_sel = st.selectbox("Seleccionar del Catálogo Único o Crear Nuevo", opciones_cat, index=idx_def)
     
-    if prod_sel == "➕ Otro / Nuevo Producto Estandarizado":
-        nombre = st.text_input("Escribe el Nombre Completo del Producto", value=val_prod_actual)
+    if prod_sel == "✨ + Escribir Producto Nuevo (Auto-Unificado)":
+        st.info("💡 **Producto Nuevo:** Escribe el nombre abajo. Al guardar, se registrará **automáticamente en el Catálogo Único** disponible para todos los vendedores.")
+        nombre = st.text_input("Escribe el Nombre Completo del Nuevo Producto", value=val_prod_actual, placeholder="Ej: Eros Flame Versace 100ml")
     else:
         nombre = prod_sel
         
