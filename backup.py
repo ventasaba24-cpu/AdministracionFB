@@ -9,16 +9,27 @@ def get_mexico_time():
 
 def generar_excel_respaldo_completo(db):
     """
-    Genera un archivo Excel en memoria con 5 pestañas completas:
+    Genera un archivo Excel en memoria con la copia EXACTA y COMPLETA de las 8 tablas de la Base de Datos:
     - Ventas
     - Abonos
-    - Inventarios
+    - Inventario
     - Usuarios
     - Gastos
+    - Catalogo_Productos
+    - Grupos_Inventario
+    - Intentos_Seguridad
     """
-    session = db.get_session()
+    if hasattr(db, "get_session"):
+        session = db.get_session()
+    elif isinstance(db, tuple) and len(db) >= 2:
+        session = db[1]()
+    elif hasattr(db, "__call__"):
+        session = db()
+    else:
+        from database import DatabaseHandler
+        session = DatabaseHandler().get_session()
     try:
-        from database import Venta, Abono, Producto, Usuario, Gasto
+        from database import Venta, Abono, Producto, Usuario, Gasto, CatalogoProducto, GrupoInventario, IntentoSeguridad
         
         # 1. Ventas
         ventas = session.query(Venta).all()
@@ -33,7 +44,8 @@ def generar_excel_respaldo_completo(db):
                 "Cantidad": v.cantidad,
                 "Monto_Total": v.monto_total,
                 "Costo_Historico": v.costo_historico,
-                "Comision_Cobrada": v.comision_cobrada
+                "Comision_Cobrada": v.comision_cobrada,
+                "Fecha_Cobro_Comision": v.fecha_cobro_comision
             })
         df_ventas = pd.DataFrame(datos_ventas)
 
@@ -46,7 +58,8 @@ def generar_excel_respaldo_completo(db):
                 "ID_Venta": a.venta_id,
                 "Fecha_Abono": a.fecha_abono,
                 "Monto_Abono": a.monto_abono,
-                "Metodo_Pago": a.metodo_pago
+                "Metodo_Pago": a.metodo_pago,
+                "Comprobante_Foto": a.comprobante_foto
             })
         df_abonos = pd.DataFrame(datos_abonos)
 
@@ -67,7 +80,7 @@ def generar_excel_respaldo_completo(db):
             })
         df_prods = pd.DataFrame(datos_prods)
 
-        # 4. Usuarios
+        # 4. Usuarios (Copia exacta incluyendo Password Hash)
         users = session.query(Usuario).all()
         datos_users = []
         for u in users:
@@ -75,10 +88,13 @@ def generar_excel_respaldo_completo(db):
                 "ID_Usuario": u.id,
                 "Nombre": u.nombre,
                 "Email": u.email,
+                "Password_Hash": u.password,
                 "Rol": u.rol,
                 "Tasa_Comision": u.tasa_comision,
                 "Patrocinador_Email": u.patrocinador_email,
-                "Tipo_Vendedor": u.tipo_vendedor
+                "Tipo_Vendedor": u.tipo_vendedor,
+                "Session_Token": u.session_token,
+                "Grupo_Inventario_ID": u.grupo_inventario_id
             })
         df_users = pd.DataFrame(datos_users)
 
@@ -95,7 +111,43 @@ def generar_excel_respaldo_completo(db):
             })
         df_gastos = pd.DataFrame(datos_gastos)
 
-        # Crear Excel en buffer
+        # 6. Catálogo Maestro de Productos
+        catalogo = session.query(CatalogoProducto).all()
+        datos_cat = []
+        for c in catalogo:
+            datos_cat.append({
+                "ID_Catalogo": c.id,
+                "Nombre": c.nombre,
+                "Categoria": c.categoria,
+                "Descripcion": c.descripcion
+            })
+        df_catalogo = pd.DataFrame(datos_cat)
+
+        # 7. Grupos de Inventario
+        grupos = session.query(GrupoInventario).all()
+        datos_grupos = []
+        for grp in grupos:
+            datos_grupos.append({
+                "ID_Grupo": grp.id,
+                "Nombre_Grupo": grp.nombre_grupo,
+                "Fecha_Creacion": grp.fecha_creacion
+            })
+        df_grupos = pd.DataFrame(datos_grupos)
+
+        # 8. Intentos de Seguridad
+        seguridad = session.query(IntentoSeguridad).all()
+        datos_seg = []
+        for s in seguridad:
+            datos_seg.append({
+                "ID": s.id,
+                "Identificador": s.identificador,
+                "Fallos": s.fallos,
+                "Bloqueado_Hasta": s.bloqueado_hasta,
+                "Ultimo_Intento": s.ultimo_intento
+            })
+        df_seguridad = pd.DataFrame(datos_seg)
+
+        # Crear Excel en buffer con las 8 pestañas completas
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df_ventas.to_excel(writer, sheet_name='Ventas', index=False)
@@ -103,10 +155,37 @@ def generar_excel_respaldo_completo(db):
             df_prods.to_excel(writer, sheet_name='Inventario', index=False)
             df_users.to_excel(writer, sheet_name='Usuarios', index=False)
             df_gastos.to_excel(writer, sheet_name='Gastos', index=False)
+            df_catalogo.to_excel(writer, sheet_name='Catalogo_Productos', index=False)
+            df_grupos.to_excel(writer, sheet_name='Grupos_Inventario', index=False)
+            df_seguridad.to_excel(writer, sheet_name='Intentos_Seguridad', index=False)
             
         return output.getvalue()
     finally:
         session.close()
+
+def verificar_y_ejecutar_respaldo_diario(db):
+    """
+    Opción A: Verifica si hoy ya se ejecutó un respaldo automático.
+    Si no se ha hecho hoy (hora México), lo realiza silenciosamente en segundo plano.
+    """
+    if "GDRIVE_WEBHOOK_URL" not in st.secrets and "gcp_service_account" not in st.secrets:
+        return
+
+    ahora_mx = get_mexico_time()
+    fecha_hoy_str = ahora_mx.strftime('%Y-%m-%d')
+
+    if st.session_state.get('respaldo_diario_fecha') == fecha_hoy_str:
+        return  # Ya se realizó el respaldo el día de hoy
+
+    # Marcar como realizado para evitar llamadas repetidas en la misma sesión
+    st.session_state['respaldo_diario_fecha'] = fecha_hoy_str
+
+    try:
+        ok, msg = subir_respaldo_a_google_drive(db)
+        if ok:
+            st.toast(f"☁️ Respaldo diario a Google Drive guardado automáticamente ({fecha_hoy_str})", icon="✅")
+    except Exception as e:
+        print(f"Error en respaldo automático diario: {e}")
 
 def subir_respaldo_a_google_drive(db):
     """
