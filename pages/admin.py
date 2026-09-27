@@ -1326,14 +1326,6 @@ def show():
                                          help="Crédito permite a este vendedor dejar ventas con abonos pendientes. One-Shot forzará a que el vendedor solo pueda registrar ventas 100% liquidadas.", horizontal=True)
             
             st.divider()
-            
-            vendedores_actuales = db.obtener_vendedores()
-            opciones_patrocinador = ["Ninguno (Empresa)"] + [st.session_state.user_email] + vendedores_actuales["email"].tolist()
-            # Eliminar duplicados manteniendo orden
-            opciones_patrocinador = list(dict.fromkeys(opciones_patrocinador))
-            
-            patrocinador_val = st.selectbox("Patrocinador (Líder de Red que ganará 5% de esta persona)", opciones_patrocinador, index=opciones_patrocinador.index(st.session_state.user_email) if st.session_state.user_email in opciones_patrocinador else 0)
-
             btn_invitar = st.form_submit_button("Generar Credencial y Enviar Invitación")
 
             if btn_invitar:
@@ -1346,8 +1338,7 @@ def show():
                     import string
                     from email_service import enviar_invitacion_gmail
                     
-                    # Limpiar patrocinador
-                    final_patrocinador = None if patrocinador_val == "Ninguno (Empresa)" else patrocinador_val
+                    final_patrocinador = None
 
                     # Generar contraseña temporal segura
                     caracteres = string.ascii_letters + string.digits
