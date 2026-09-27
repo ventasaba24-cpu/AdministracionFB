@@ -50,6 +50,13 @@ class IntentoSeguridad(Base):
     bloqueado_hasta = Column(DateTime, nullable=True)
     ultimo_intento = Column(DateTime, default=get_mexico_time)
 
+class BitacoraRespaldo(Base):
+    __tablename__ = 'bitacora_respaldos'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fecha_respaldo = Column(String(20), nullable=False, unique=True) # 'YYYY-MM-DD'
+    creado_el = Column(DateTime, default=get_mexico_time)
+
+
 from sqlalchemy import UniqueConstraint
 
 class Producto(Base):
