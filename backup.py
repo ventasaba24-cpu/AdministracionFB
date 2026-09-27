@@ -110,34 +110,59 @@ def generar_excel_respaldo_completo(db):
 
 def subir_respaldo_a_google_drive(db):
     """
-    Sube el archivo Excel generado a la carpeta de Google Drive configurada en st.secrets
+    Sube el archivo Excel generado a la carpeta de Google Drive.
+    Soporta dos métodos:
+    1. GDRIVE_WEBHOOK_URL (Google Apps Script Web App - Recomendado para cuentas personales sin límite de cuota)
+    2. gcp_service_account (Service Account API)
     """
-    if "gcp_service_account" not in st.secrets:
-        return False, "No se encontró la configuración [gcp_service_account] en Secrets."
-
     if "GDRIVE_FOLDER_ID" not in st.secrets:
         return False, "No se encontró la variable GDRIVE_FOLDER_ID en Secrets."
+
+    folder_id = st.secrets["GDRIVE_FOLDER_ID"].strip()
+    excel_bytes = generar_excel_respaldo_completo(db)
+    ahora = get_mexico_time()
+    nombre_archivo = f"Respaldo_FB_Catalogo_{ahora.strftime('%Y-%m-%d_%H-%M')}.xlsx"
+
+    # Método 1: Google Apps Script Webhook (Infalible para Drive Personal)
+    if "GDRIVE_WEBHOOK_URL" in st.secrets and st.secrets["GDRIVE_WEBHOOK_URL"]:
+        try:
+            import base64
+            import requests
+
+            webhook_url = st.secrets["GDRIVE_WEBHOOK_URL"].strip()
+            b64_data = base64.b64encode(excel_bytes).decode('utf-8')
+
+            payload = {
+                "folder_id": folder_id,
+                "filename": nombre_archivo,
+                "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "data": b64_data
+            }
+
+            res = requests.post(webhook_url, data=payload, timeout=30)
+            if res.status_code == 200 and ("OK" in res.text or "success" in res.text.lower()):
+                return True, f"✅ Respaldo '{nombre_archivo}' subido exitosamente a tu Google Drive."
+            else:
+                return False, f"Respuesta Webhook ({res.status_code}): {res.text[:150]}"
+        except Exception as e_wh:
+            return False, f"Error subiendo vía Webhook a Google Drive: {e_wh}"
+
+    # Método 2: Service Account (Google Cloud API)
+    if "gcp_service_account" not in st.secrets:
+        return False, "No se encontró la configuración [gcp_service_account] ni GDRIVE_WEBHOOK_URL en Secrets."
 
     try:
         from google.oauth2 import service_account
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaIoBaseUpload
 
-        folder_id = st.secrets["GDRIVE_FOLDER_ID"].strip()
         creds_dict = dict(st.secrets["gcp_service_account"])
-        
-        # Corregir saltos de linea en private_key si fuera necesario
         if "private_key" in creds_dict:
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
         scopes = ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive']
         credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=scopes)
         service = build('drive', 'v3', credentials=credentials)
-
-        # Generar archivo Excel
-        excel_bytes = generar_excel_respaldo_completo(db)
-        ahora = get_mexico_time()
-        nombre_archivo = f"Respaldo_FB_Catalogo_{ahora.strftime('%Y-%m-%d_%H-%M')}.xlsx"
 
         file_metadata = {
             'name': nombre_archivo,
@@ -153,6 +178,7 @@ def subir_respaldo_a_google_drive(db):
         archivo_subido = service.files().create(
             body=file_metadata,
             media_body=media,
+            supportsAllDrives=True,
             fields='id, name, webViewLink'
         ).execute()
 
