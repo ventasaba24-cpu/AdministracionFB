@@ -171,8 +171,9 @@ _GLOBAL_BACKUP_STATE = {
 
 def verificar_y_ejecutar_respaldo_diario(db):
     """
-    Opción A: Ejecuta el respaldo automático EXACTAMENTE 1 vez al día (al primer usuario que inicie sesión ese día).
-    El estado se comparte de forma global entre TODOS los usuarios y pestañas de navegador.
+    Ejecuta el respaldo automático EXACTAMENTE 1 vez al día.
+    Para sobrevivir a los reinicios de contenedor/RAM de Streamlit Cloud,
+    consulta la tabla persistentemente en la base de datos (Supabase).
     """
     if "GDRIVE_WEBHOOK_URL" not in st.secrets and "gcp_service_account" not in st.secrets:
         return
@@ -180,28 +181,76 @@ def verificar_y_ejecutar_respaldo_diario(db):
     ahora_mx = get_mexico_time()
     fecha_hoy_str = ahora_mx.strftime('%Y-%m-%d')
 
-    # 1. Si ya se ejecutó hoy a nivel global para CUALQUIER usuario, ignorar
+    # 1. Chequeo rápido en memoria RAM de esta instancia
     if _GLOBAL_BACKUP_STATE.get("last_date") == fecha_hoy_str:
         return
 
-    # 2. Si este navegador específico ya lo comprobó, ignorar
     if st.session_state.get('respaldo_diario_fecha') == fecha_hoy_str:
         return
 
-    # Marcar inmediatamente a nivel global para bloquear ejecuciones simultáneas
+    # 2. Chequeo PERSISTENTE en la Base de Datos (Supabase)
+    if hasattr(db, "get_session"):
+        session = db.get_session()
+    elif isinstance(db, tuple) and len(db) >= 2:
+        session = db[1]()
+    elif hasattr(db, "__call__"):
+        session = db()
+    else:
+        from database import DatabaseHandler
+        session = DatabaseHandler().get_session()
+
+    try:
+        from database import BitacoraRespaldo
+        ya_respaldado = session.query(BitacoraRespaldo).filter_by(fecha_respaldo=fecha_hoy_str).first()
+        if ya_respaldado:
+            # Ya se ejecutó el respaldo hoy en la BD (por otra sesión o antes de reiniciar el contenedor)
+            _GLOBAL_BACKUP_STATE["last_date"] = fecha_hoy_str
+            st.session_state['respaldo_diario_fecha'] = fecha_hoy_str
+            return
+    except Exception as e_check:
+        print(f"Advertencia consultando bitácora de respaldos: {e_check}")
+    finally:
+        session.close()
+
+    # Si no existe en la base de datos para el día de hoy, bloquear temporalmente en RAM y ejecutar
     _GLOBAL_BACKUP_STATE["last_date"] = fecha_hoy_str
     st.session_state['respaldo_diario_fecha'] = fecha_hoy_str
 
     try:
         ok, msg = subir_respaldo_a_google_drive(db)
         if ok:
+            # Registrar en la Base de Datos persistentemente
+            if hasattr(db, "get_session"):
+                s_log = db.get_session()
+            elif isinstance(db, tuple) and len(db) >= 2:
+                s_log = db[1]()
+            elif hasattr(db, "__call__"):
+                s_log = db()
+            else:
+                from database import DatabaseHandler
+                s_log = DatabaseHandler().get_session()
+
+            try:
+                from database import BitacoraRespaldo
+                nuevo_log = BitacoraRespaldo(fecha_respaldo=fecha_hoy_str, creado_el=ahora_mx)
+                s_log.add(nuevo_log)
+                s_log.commit()
+            except Exception as e_save:
+                s_log.rollback()
+                print(f"Error registrando respaldo en BD: {e_save}")
+            finally:
+                s_log.close()
+
             st.toast(f"☁️ Respaldo automático diario a Google Drive realizado ({fecha_hoy_str})", icon="✅")
         else:
-            # Si falló la subida, liberar la bandera global para reintentar con el siguiente usuario
+            # Si falló la subida, liberar la bandera para permitir reintento
             _GLOBAL_BACKUP_STATE["last_date"] = None
+            st.session_state['respaldo_diario_fecha'] = None
     except Exception as e:
         _GLOBAL_BACKUP_STATE["last_date"] = None
+        st.session_state['respaldo_diario_fecha'] = None
         print(f"Error en respaldo automático diario: {e}")
+
 
 def subir_respaldo_a_google_drive(db):
     """
