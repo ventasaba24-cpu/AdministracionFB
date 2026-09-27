@@ -163,10 +163,15 @@ def generar_excel_respaldo_completo(db):
     finally:
         session.close()
 
+# Estado global compartido entre TODOS los usuarios en RAM de la app
+_GLOBAL_BACKUP_STATE = {
+    "last_date": None
+}
+
 def verificar_y_ejecutar_respaldo_diario(db):
     """
-    Opción A: Verifica si hoy ya se ejecutó un respaldo automático.
-    Si no se ha hecho hoy (hora México), lo realiza silenciosamente en segundo plano.
+    Opción A: Ejecuta el respaldo automático EXACTAMENTE 1 vez al día (al primer usuario que inicie sesión ese día).
+    El estado se comparte de forma global entre TODOS los usuarios y pestañas de navegador.
     """
     if "GDRIVE_WEBHOOK_URL" not in st.secrets and "gcp_service_account" not in st.secrets:
         return
@@ -174,17 +179,27 @@ def verificar_y_ejecutar_respaldo_diario(db):
     ahora_mx = get_mexico_time()
     fecha_hoy_str = ahora_mx.strftime('%Y-%m-%d')
 
-    if st.session_state.get('respaldo_diario_fecha') == fecha_hoy_str:
-        return  # Ya se realizó el respaldo el día de hoy
+    # 1. Si ya se ejecutó hoy a nivel global para CUALQUIER usuario, ignorar
+    if _GLOBAL_BACKUP_STATE.get("last_date") == fecha_hoy_str:
+        return
 
-    # Marcar como realizado para evitar llamadas repetidas en la misma sesión
+    # 2. Si este navegador específico ya lo comprobó, ignorar
+    if st.session_state.get('respaldo_diario_fecha') == fecha_hoy_str:
+        return
+
+    # Marcar inmediatamente a nivel global para bloquear ejecuciones simultáneas
+    _GLOBAL_BACKUP_STATE["last_date"] = fecha_hoy_str
     st.session_state['respaldo_diario_fecha'] = fecha_hoy_str
 
     try:
         ok, msg = subir_respaldo_a_google_drive(db)
         if ok:
-            st.toast(f"☁️ Respaldo diario a Google Drive guardado automáticamente ({fecha_hoy_str})", icon="✅")
+            st.toast(f"☁️ Respaldo automático diario a Google Drive realizado ({fecha_hoy_str})", icon="✅")
+        else:
+            # Si falló la subida, liberar la bandera global para reintentar con el siguiente usuario
+            _GLOBAL_BACKUP_STATE["last_date"] = None
     except Exception as e:
+        _GLOBAL_BACKUP_STATE["last_date"] = None
         print(f"Error en respaldo automático diario: {e}")
 
 def subir_respaldo_a_google_drive(db):
