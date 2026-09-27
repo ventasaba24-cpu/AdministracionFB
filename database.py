@@ -40,6 +40,7 @@ class Usuario(Base):
     tipo_vendedor = Column(String(50), default='Crédito') # 'Crédito' o 'One-Shot'
     session_token = Column(String(100), nullable=True) # UUID Session Key
     grupo_inventario_id = Column(Integer, ForeignKey('grupos_inventario.id', ondelete='SET NULL'), nullable=True)
+    ultimo_login = Column(DateTime, nullable=True) # Fecha y hora del ultimo acceso registrado
 
 class IntentoSeguridad(Base):
     __tablename__ = 'intentos_seguridad'
@@ -194,6 +195,7 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
         ("usuarios", "tipo_vendedor", "VARCHAR(50) DEFAULT 'Crédito'"),
         ("usuarios", "session_token", "VARCHAR(100)"),
         ("usuarios", "grupo_inventario_id", "INTEGER"),
+        ("usuarios", "ultimo_login", "TIMESTAMP"),
         ("productos", "costo_compra", "FLOAT DEFAULT 0.0"),
         ("productos", "proveedor", "VARCHAR(150) DEFAULT 'Generico'"),
         ("productos", "lote", "VARCHAR(50) DEFAULT 'Lote 1'"),
@@ -986,6 +988,7 @@ class DatabaseHandler:
              import uuid
              nuevo_token = str(uuid.uuid4())
              usr.session_token = nuevo_token
+             usr.ultimo_login = get_mexico_time()
              session.commit()
              
              self.limpiar_fallos(session, id_seguridad)
@@ -1008,6 +1011,12 @@ class DatabaseHandler:
         session = self.get_session()
         try:
              usr = session.query(Usuario).filter_by(session_token=token).first()
+             if usr:
+                 try:
+                     usr.ultimo_login = get_mexico_time()
+                     session.commit()
+                 except Exception:
+                     session.rollback()
              return usr
         finally:
              session.close()
