@@ -717,11 +717,6 @@ class DatabaseHandler:
                      "Saldo_Pendiente": saldo,
                      "Estado_Venta": estado,
                      "Comision_Generada": comision_ganada,
-                     "Comision_Red": comision_red,
-                     "Comision_Red_L1": comision_red_l1,
-                     "Comision_Red_L2": comision_red_l2,
-                     "Comision_Red_L3": comision_red_l3,
-                     "Niveles_Red": niveles_red_activos,
                      "Utilidad_Neta": utilidad_neta,
                      "Comision_Pagada": comision_pagada, # Concepto teórico de si ya superó el Adeudo
                      "Comision_Fisicamente_Cobrada": v.comision_cobrada,
