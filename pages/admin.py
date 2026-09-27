@@ -564,10 +564,7 @@ def show():
             iva_generado = df_todas["IVA_(16%)"].sum()
             costo_total = df_todas["Costo_Producto"].sum()
             comisiones_directas = df_todas["Comision_Generada"].sum()
-            comisiones_l1 = df_todas["Comision_Red_L1"].sum() if "Comision_Red_L1" in df_todas.columns else 0.0
-            comisiones_l2 = df_todas["Comision_Red_L2"].sum() if "Comision_Red_L2" in df_todas.columns else 0.0
-            comisiones_l3 = df_todas["Comision_Red_L3"].sum() if "Comision_Red_L3" in df_todas.columns else 0.0
-            comisiones_red_total = df_todas["Comision_Red"].sum()
+            comisiones_directas = df_todas["Comision_Generada"].sum()
             
             # GASTOS EXTERNOS
             total_gastos = df_gastos["Monto"].sum() if not df_gastos.empty else 0.0
@@ -581,14 +578,7 @@ def show():
             col2.metric("✨ Flujo Libre Final", f"${utilidad_neta_real:,.2f}", f"Egresos restados: -${total_gastos:,.2f}", delta_color="normal")
             col3.metric("IVA Reservado (16%)", f"${iva_generado:,.2f}")
             col4.metric("Costo Inversión", f"${costo_total:,.2f}", "Proveedores", delta_color="inverse")
-            col5.metric("Total Comisiones Pagadas", f"${comisiones_directas + comisiones_red_total:,.2f}", f"Directas: ${comisiones_directas:,.0f} | Red: ${comisiones_red_total:,.0f}", delta_color="inverse")
-            
-            st.markdown("##### 📉 Desglose de Comisiones (Multinivel)")
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("🤝 Directas (Vendedor)", f"${comisiones_directas:,.2f}")
-            c2.metric("🥇 Red Nivel 1 (Patrocinador)", f"${comisiones_l1:,.2f}", "5% Asignado", delta_color="off")
-            c3.metric("🥈 Red Nivel 2", f"${comisiones_l2:,.2f}", "3% Asignado", delta_color="off")
-            c4.metric("🥉 Red Nivel 3", f"${comisiones_l3:,.2f}", "2% Asignado", delta_color="off")
+            col5.metric("Comisiones Vendedoras", f"${comisiones_directas:,.2f}", "Ganancia Vendedoras", delta_color="inverse")
             
             st.markdown("---")
             
@@ -678,20 +668,14 @@ def show():
                     c1, c2 = st.columns(2)
                     
                     with c1:
-                        # Gráfico 1: Rendimiento de Red (Distribución del dinero)
-                        # Verificamos columnas multinivel
-                        cl1 = df_bi["Comision_Red_L1"].sum() if "Comision_Red_L1" in df_bi.columns else 0.0
-                        cl2 = df_bi["Comision_Red_L2"].sum() if "Comision_Red_L2" in df_bi.columns else 0.0
-                        cl3 = df_bi["Comision_Red_L3"].sum() if "Comision_Red_L3" in df_bi.columns else 0.0
-                        
+                        # Gráfico 1: Distribución del Ingreso Bruto
                         valores = [
-                            utilidad_neta_base - comisiones_red_total, # Lo que realmente queda para la empresa
+                            utilidad_neta_base,
                             comisiones_directas, 
-                            cl1, cl2, cl3,
                             costo_total,
                             iva_generado
                         ]
-                        nombres = ["Flujo Libre", "Comisión Vendedores", "Red L1 (5%)", "Red L2 (3%)", "Red L3 (2%)", "Costo Producto", "IVA (16%)"]
+                        nombres = ["Flujo Libre", "Comisión Vendedores", "Costo Producto", "IVA (16%)"]
                         
                         # Filtrar ceros para no ensuciar gráfica
                         valores_f = [v for v in valores if v > 0]
@@ -748,20 +732,15 @@ def show():
                 "Costo_Producto": "sum",
                 "IVA_(16%)": "sum",
                 "Comision_Generada": "sum",
-                "Comision_Red": "sum",
                 "Utilidad_Neta": "sum",
-                "Saldo_Pendiente": "sum",
-                "Niveles_Red": "max" # Ver el máximo nivel de patrocinadores que activó
+                "Saldo_Pendiente": "sum"
             }).reset_index()
             
             for _, r in df_com.iterrows():
-                niveles = int(r["Niveles_Red"])
-                tag_red = f'<span style="background-color: #e0e7ff; color: #4338ca; font-size: 11px; padding: 2px 6px; border-radius: 10px; margin-left: 8px;">🧬 Niveles Arriba: {niveles}</span>' if niveles > 0 else ""
-                
                 st.markdown(f"""
 <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #3b82f6; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
 <div style="font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 12px; display: flex; align-items: center;">
-👤 {r['Nombre_Vendedor']} {tag_red}
+👤 {r['Nombre_Vendedor']}
 </div>
 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
 <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Ventas Totales</span><br><span style="font-size: 15px; font-weight: 800; color: #0f172a;">${r['Total_Venta']:,.2f}</span></div>
@@ -769,11 +748,7 @@ def show():
 <div><span style="font-size: 12px; color: #dc2626; font-weight: 600;">Deuda en la Calle</span><br><span style="font-size: 15px; font-weight: 800; color: #991b1b;">${r['Saldo_Pendiente']:,.2f}</span></div>
 <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Costo Proveedor</span><br><span style="font-size: 15px; font-weight: 800; color: #ef4444;">${r['Costo_Producto']:,.2f}</span></div>
 <div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">IVA Reservado (16%)</span><br><span style="font-size: 15px; font-weight: 800; color: #64748b;">${r['IVA_(16%)']:,.2f}</span></div>
-<div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Comisiones (Directas)</span><br><span style="font-size: 15px; font-weight: 800; color: #f59e0b;">${r['Comision_Generada']:,.2f}</span></div>
-<div style="grid-column: span 3; border-top: 1px dashed #cbd5e1; padding-top: 8px;">
-<span style="font-size: 12px; color: #4338ca; font-weight: 600;">🧬 Regalías Generadas para la Red (Derramadas hacia Arriba): </span>
-<span style="font-size: 14px; font-weight: 800; color: #3730a3;">${r['Comision_Red']:,.2f}</span>
-</div>
+<div><span style="font-size: 12px; color: #4b5563; font-weight: 600;">Comisión Vendedora</span><br><span style="font-size: 15px; font-weight: 800; color: #f59e0b;">${r['Comision_Generada']:,.2f}</span></div>
 </div>
 </div>
 """, unsafe_allow_html=True)
@@ -787,11 +762,10 @@ def show():
                     "Costo_Producto": "sum",
                     "IVA_(16%)": "sum",
                     "Comision_Generada": "sum",
-                    "Comision_Red": "sum",
                     "Utilidad_Neta": "sum"
                 })
                 # Aplanar los niveles del DataFrame generados por count/sum
-                df_perfumes.columns = ["Unidades_Vendidas", "Bruto_Ingresado", "Inversion_Total", "IVA_Retenido", "Comisiones_Pagadas", "Comisiones_Red_Pagadas", "Utilidad_Real_Meta"]
+                df_perfumes.columns = ["Unidades_Vendidas", "Bruto_Ingresado", "Inversion_Total", "IVA_Retenido", "Comisiones_Pagadas", "Utilidad_Real_Meta"]
                 df_perfumes = df_perfumes.reset_index().sort_values(by="Utilidad_Real_Meta", ascending=False)
                 
                 try:
@@ -825,7 +799,6 @@ def show():
                     v_unit = r['Bruto_Ingresado'] / uds_div
                     c_unit = r['Inversion_Total'] / uds_div
                     com_unit = r['Comisiones_Pagadas'] / uds_div
-                    com_red_unit = r['Comisiones_Red_Pagadas'] / uds_div
                     iva_unit = r['IVA_Retenido'] / uds_div
                     net_unit = r['Utilidad_Real_Meta'] / uds_div
                     
@@ -833,7 +806,7 @@ def show():
                     # Calcular precio ideal (10% ganancia real bruta absorbida) solo si el margen es menor a 10 y hay costo
                     if margen < 10.0 and c_unit > 0:
                         tasa_iva = 0.16
-                        tasa_comision = (com_unit + com_red_unit) / v_unit if v_unit > 0 else 0.10
+                        tasa_comision = com_unit / v_unit if v_unit > 0 else 0.10
                         margen_objetivo = 0.10
                         factor_divisor = 1.0 - tasa_comision - tasa_iva - margen_objetivo
                         if factor_divisor > 0:
@@ -863,14 +836,9 @@ def show():
                                 <div style="flex: 1; text-align: right; font-weight: 600;">${r['Inversion_Total']:,.2f}</div>
                             </div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
-                                <div style="flex: 2;">🤝 Comis. Repartidas (Directas)</div>
+                                <div style="flex: 2;">🤝 Comisión Vendedora</div>
                                 <div style="flex: 1; text-align: right;">${com_unit:,.2f}</div>
                                 <div style="flex: 1; text-align: right; font-weight: 600;">${r['Comisiones_Pagadas']:,.2f}</div>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
-                                <div style="flex: 2;">🧬 Comis. Red (Derramadas)</div>
-                                <div style="flex: 1; text-align: right;">${com_red_unit:,.2f}</div>
-                                <div style="flex: 1; text-align: right; font-weight: 600;">${r['Comisiones_Red_Pagadas']:,.2f}</div>
                             </div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
                                 <div style="flex: 2;">🏛️ IVA Reservado (16%)</div>
