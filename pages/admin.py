@@ -199,8 +199,8 @@ def fetch_ventas_cached():
     return DatabaseHandler().obtener_tabla_ventas_completa()
 
 def render_tab_inteligencia(db):
-    st.subheader("💡 Inteligencia de Compras, Rentabilidad y Reabastecimiento")
-    st.markdown("Análisis estratégico en tiempo real para maximizar el margen de utilidad y tomar decisiones de recarga de inventario.")
+    st.subheader("💡 Inteligencia Financiera, GMROI y Reabastecimiento")
+    st.markdown("Análisis estratégico corporativo en tiempo real para maximizar el retorno de inversión en stock, el flujo de caja y la eficiencia operativa.")
 
     try:
         engine = db.engine
@@ -246,6 +246,46 @@ def render_tab_inteligencia(db):
 
     st.markdown("---")
 
+    # --- SECCIÓN 1.5: MÉTRICAS CORPORATIVAS AVANZADAS (GMROI, CCC, PUNTO DE EQUILIBRIO) ---
+    st.markdown("### 📈 Métricas Avanzadas Corporativas (GMROI, CCC y Punto de Equilibrio)")
+    st.caption("Indicadores ejecutivos clave utilizados por empresas globales para medir rentabilidad sobre activos y salud de liquidez.")
+
+    # GMROI Global = Utilidad Bruta / Valor Total de Inventario en Costo
+    costo_inv_actual = (df_prods['stock'] * df_prods['costo_compra']).sum() if not df_prods.empty else 0.0
+    gmroi_global = (total_utilidad_bruta / costo_inv_actual) if costo_inv_actual > 0 else 0.0
+
+    # Ciclo de Conversión de Efectivo (CCC)
+    # DIO (Días de Inventario) = (Costo Inventario / Costo Ventas) * 30
+    # DSO (Días de Cobro) = (Cuentas por Cobrar / Ventas Totales) * 30
+    dio = (costo_inv_actual / total_costo_historico * 30) if total_costo_historico > 0 else 0.0
+    dso = (total_pendiente / total_ventas_dinero * 30) if total_ventas_dinero > 0 else 0.0
+    dpo = 15.0 # Días promedio de crédito con proveedor
+    ccc_dias = dio + dso - dpo
+
+    # Punto de Equilibrio (Break-Even)
+    gastos_fijos_est = 5000.0
+    margen_contrib_ratio = (total_utilidad_bruta / total_ventas_dinero) if total_ventas_dinero > 0 else 0.0
+    punto_equilibrio_val = (gastos_fijos_est / margen_contrib_ratio) if margen_contrib_ratio > 0 else 0.0
+
+    mc1, mc2, mc3 = st.columns(3)
+    mc1.metric(
+        "📊 GMROI Global (Retorno Inversión Stock)",
+        f"{gmroi_global:.2f}x",
+        "Objetivo > 1.5x (Excelente)" if gmroi_global >= 1.5 else "Bajo retorno de inventario"
+    )
+    mc2.metric(
+        "🔄 Ciclo Conversión Efectivo (CCC)",
+        f"{ccc_dias:.1f} Días",
+        f"DIO: {dio:.0f}d | DSO: {dso:.0f}d | DPO: {dpo:.0f}d"
+    )
+    mc3.metric(
+        "🎯 Punto de Equilibrio Estimado",
+        f"${punto_equilibrio_val:,.2f} MXN",
+        f"Ventas reales: ${total_ventas_dinero:,.2f}"
+    )
+
+    st.markdown("---")
+
     # Resumen por producto
     res = df_ventas.groupby('producto_clean').agg(
         unidades_vendidas=('cantidad', 'sum'),
@@ -281,6 +321,29 @@ def render_tab_inteligencia(db):
         ((full_df['precio_unitario_final'] - full_df['costo_unitario_final']) / full_df['precio_unitario_final']) * 100,
         0.0
     )
+
+    # Matriz Scatter Plot GMROI vs Ventas por Producto
+    df_gmroi_prod = full_df[full_df['unidades_vendidas'] > 0].copy()
+    if not df_gmroi_prod.empty:
+        df_gmroi_prod['inversion_prod'] = df_gmroi_prod['stock_actual'] * df_gmroi_prod['costo_unitario_final']
+        df_gmroi_prod['gmroi_prod'] = np.where(
+            df_gmroi_prod['inversion_prod'] > 0,
+            df_gmroi_prod['ganancia_total'] / df_gmroi_prod['inversion_prod'],
+            df_gmroi_prod['ganancia_total'] / np.maximum(df_gmroi_prod['costo_unitario_final'], 1.0)
+        )
+
+        fig_gmroi = px.scatter(
+            df_gmroi_prod,
+            x='unidades_vendidas',
+            y='gmroi_prod',
+            size='ingresos_totales',
+            color='margen_pct_final',
+            hover_name='producto_clean',
+            title='Matriz GMROI: Multiplicador de Retorno vs Unidades Vendidas (Tamaño = Ingresos)',
+            labels={'unidades_vendidas': 'Unidades Vendidas', 'gmroi_prod': 'GMROI (Retorno x Inversión)', 'margen_pct_final': 'Margen %'},
+            color_continuous_scale='Viridis'
+        )
+        st.plotly_chart(fig_gmroi, use_container_width=True)
 
     # Estacionalidad / Temporada
     def asignar_temporada(nombre):
@@ -488,6 +551,193 @@ def render_tab_inteligencia(db):
         )
         st.plotly_chart(fig, use_container_width=True)
 
+def render_tab_clientes_vips(db, df_todas):
+    st.subheader("👑 Inteligencia de Clientes VIP, LTV y Control de Morosidad")
+    st.markdown("Gestión ejecutiva del valor de vida del cliente (Lifetime Value) y matriz de antigüedad de saldos pendientes.")
+
+    if df_todas.empty:
+        st.info("Aún no hay ventas registradas para analizar cartera de clientes.")
+        return
+
+    import datetime
+    from database import get_mexico_time
+    ahora_mx = get_mexico_time()
+    fecha_hoy = ahora_mx.date()
+
+    df_v = df_todas.copy()
+    df_v["Fecha_Dt"] = pd.to_datetime(df_v["Fecha_Venta"], errors='coerce')
+    df_v["Total_Venta"] = pd.to_numeric(df_v["Total_Venta"], errors='coerce').fillna(0.0)
+    df_v["Total_Abono"] = pd.to_numeric(df_v["Total_Abono"], errors='coerce').fillna(0.0)
+    df_v["Saldo_Pendiente"] = pd.to_numeric(df_v["Saldo_Pendiente"], errors='coerce').fillna(0.0)
+    df_v["Cantidad"] = pd.to_numeric(df_v["Cantidad"], errors='coerce').fillna(1)
+    df_v["Cliente"] = df_v["Cliente"].fillna("Cliente Desconocido").str.strip()
+
+    # --- SECCIÓN 1: RESUMEN EJECUTIVO DE CARTERA DE CLIENTES ---
+    clientes_agrupados = df_v.groupby("Cliente").agg(
+        compras_totales=("Total_Venta", "sum"),
+        abonos_totales=("Total_Abono", "sum"),
+        saldo_pendiente=("Saldo_Pendiente", "sum"),
+        piezas_compradas=("Cantidad", "sum"),
+        num_pedidos=("ID_Venta", "count"),
+        ultima_compra=("Fecha_Dt", "max")
+    ).reset_index()
+
+    clientes_agrupados["ticket_promedio"] = clientes_agrupados["compras_totales"] / clientes_agrupados["num_pedidos"]
+    clientes_agrupados["dias_inactivo"] = (pd.to_datetime(fecha_hoy) - clientes_agrupados["ultima_compra"]).dt.days.fillna(0).astype(int)
+
+    total_clientes_unicos = len(clientes_agrupados)
+    clientes_recurrentes = len(clientes_agrupados[clientes_agrupados["num_pedidos"] > 1])
+    pct_recurrencia = (clientes_recurrentes / total_clientes_unicos * 100) if total_clientes_unicos > 0 else 0.0
+    ltv_promedio = clientes_agrupados["compras_totales"].mean() if total_clientes_unicos > 0 else 0.0
+    deuda_total_cartera = clientes_agrupados["saldo_pendiente"].sum()
+
+    st.markdown("### 📊 Resumen General de Cartera")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("👥 Total Clientes Registrados", f"{total_clientes_unicos} clientes", f"{clientes_recurrentes} recurrentes ({pct_recurrencia:.1f}%)")
+    c2.metric("💎 Customer Lifetime Value (LTV Promedio)", f"${ltv_promedio:,.2f}")
+    c3.metric("🛒 Ticket Promedio General", f"${df_v['Total_Venta'].mean():,.2f}")
+    c4.metric("🚨 Cartera por Cobrar", f"${deuda_total_cartera:,.2f}", delta_color="inverse")
+
+    st.markdown("---")
+
+    # --- SECCIÓN 2: RANKING CLIENTES VIP Y CLASIFICACIÓN TIER ---
+    st.markdown("### 🏆 Ranking Clientes VIP por LTV (Valor Histórico)")
+    st.caption("Clasificación automática por volumen acumulado de compra para otorgar atención preferencial.")
+
+    def clasificar_vip(row):
+        ltv = row["compras_totales"]
+        if ltv >= 15000:
+            return "🥇 VIP Platinum", "#fef9c3", "#a16207"
+        elif ltv >= 7500:
+            return "🥈 VIP Gold", "#f1f5f9", "#475569"
+        elif ltv >= 3000:
+            return "🥉 VIP Silver", "#ffedd5", "#c2410c"
+        else:
+            return "👤 Cliente Estándar", "#f8fafc", "#64748b"
+
+    vip_res = clientes_agrupados.sort_values(by="compras_totales", ascending=False).copy()
+    vip_res["Categoría_VIP"] = vip_res.apply(lambda r: clasificar_vip(r)[0], axis=1)
+
+    # Tabs de navegación de clientes
+    v_tab1, v_tab2 = st.tabs(["📋 Lista Completa LTV", "🌟 Cuadro de Honor Top 10"])
+
+    with v_tab1:
+        df_vip_disp = vip_res[["Cliente", "Categoría_VIP", "compras_totales", "abonos_totales", "saldo_pendiente", "num_pedidos", "ticket_promedio", "dias_inactivo"]].copy()
+        df_vip_disp.columns = ["Cliente", "Nivel VIP", "Total Comprado (LTV)", "Total Abonado", "Saldo Pendiente", "N° Pedidos", "Ticket Prom.", "Días Inactivo"]
+        df_vip_disp["Total Comprado (LTV)"] = df_vip_disp["Total Comprado (LTV)"].map("${:,.2f}".format)
+        df_vip_disp["Total Abonado"] = df_vip_disp["Total Abonado"].map("${:,.2f}".format)
+        df_vip_disp["Saldo Pendiente"] = df_vip_disp["Saldo Pendiente"].map("${:,.2f}".format)
+        df_vip_disp["Ticket Prom."] = df_vip_disp["Ticket Prom."].map("${:,.2f}".format)
+        st.dataframe(df_vip_disp, use_container_width=True, hide_index=True)
+
+    with v_tab2:
+        top_10_vip = vip_res.head(10)
+        for idx_vip, r_vip in top_10_vip.iterrows():
+            tier_lbl, bg_c, text_c = clasificar_vip(r_vip)
+            st.markdown(f"""
+            <div style='background-color: {bg_c}; padding: 12px 16px; border-radius: 10px; border: 1px solid {text_c}; margin-bottom: 8px;'>
+                <div style='display: flex; justify-content: space-between; align-items: center;'>
+                    <div>
+                        <span style='font-size: 15px; font-weight: bold; color: #0f172a;'>👤 {r_vip['Cliente']}</span>
+                        <span style='font-size: 12px; font-weight: 700; color: {text_c}; background: rgba(255,255,255,0.8); padding: 3px 10px; border-radius: 12px; margin-left: 10px;'>{tier_lbl}</span>
+                    </div>
+                    <div style='font-size: 13px; font-weight: bold; color: #166534;'>
+                        LTV Acumulado: ${r_vip['compras_totales']:,.2f} MXN
+                    </div>
+                </div>
+                <div style='display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-top: 8px; font-size: 12px; color: #475569;'>
+                    <div><b>🛒 Pedidos:</b> {r_vip['num_pedidos']} veces</div>
+                    <div><b>🎫 Ticket Prom:</b> ${r_vip['ticket_promedio']:,.2f}</div>
+                    <div><b>💳 Deuda Pendiente:</b> <span style='color: {"#dc2626" if r_vip["saldo_pendiente"] > 0 else "#166534"}; font-weight: bold;'>${r_vip['saldo_pendiente']:,.2f}</span></div>
+                    <div><b>🕒 Última Compra:</b> hace {r_vip['dias_inactivo']} días</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # --- SECCIÓN 3: ALERTAS DE CHURN / RE-ENGAGEMENT (>45 DÍAS SIN COMPRA) ---
+    st.markdown("### 🔔 Alerta de Riesgo de Abandono (Clientes Inactivos >45 días)")
+    st.caption("Clientes de alto valor (LTV >= $2,000 MXN) que no han realizado compras en los últimos 45 días.")
+
+    df_inactivos = vip_res[(vip_res["dias_inactivo"] > 45) & (vip_res["compras_totales"] >= 2000)].copy()
+
+    if not df_inactivos.empty:
+        st.warning(f"⚠️ Hay **{len(df_inactivos)} clientes VIP** en riesgo de enfriamiento (más de 45 días sin comprar). ¡Oportunidad para campaña de reactivación por WhatsApp!")
+        df_inac_disp = df_inactivos[["Cliente", "Categoría_VIP", "compras_totales", "dias_inactivo", "num_pedidos"]].copy()
+        df_inac_disp.columns = ["Cliente", "Categoría", "LTV Histórico ($)", "Días Sin Comprar", "Total Pedidos"]
+        df_inac_disp["LTV Histórico ($)"] = df_inac_disp["LTV Histórico ($)"].map("${:,.2f}".format)
+        st.dataframe(df_inac_disp, use_container_width=True, hide_index=True)
+    else:
+        st.success("✅ ¡Felicidades! Tus clientes VIP están activos y comprando de forma recurrente.")
+
+    st.markdown("---")
+
+    # --- SECCIÓN 4: MATRIZ DE ANTIGÜEDAD DE MOROSIDAD (AGING SCHEDULE) ---
+    st.markdown("### ⏳ Matriz de Antigüedad de Morosidad (Aging Schedule de Cuentas por Cobrar)")
+    st.caption("Clasificación de deudas vigentes según los días transcurridos desde que se otorgó el crédito.")
+
+    df_deudas = df_v[df_v["Saldo_Pendiente"] > 0].copy()
+
+    if not df_deudas.empty:
+        df_deudas["dias_antiguedad"] = (pd.to_datetime(fecha_hoy) - df_deudas["Fecha_Dt"]).dt.days.fillna(0).astype(int)
+
+        def clasificar_antiguedad(dias):
+            if dias <= 15:
+                return "1. 0 - 15 días (Vigente / Normal)"
+            elif dias <= 30:
+                return "2. 16 - 30 días (Atención Preventiva)"
+            elif dias <= 60:
+                return "3. 31 - 60 días (Cobranza Prioritaria)"
+            else:
+                return "4. > 60 días (Cartera Vencida Crítica)"
+
+        df_deudas["Rango_Antiguedad"] = df_deudas["dias_antiguedad"].apply(clasificar_antiguedad)
+
+        agrupado_mor = df_deudas.groupby("Rango_Antiguedad").agg(
+            monto_deuda=("Saldo_Pendiente", "sum"),
+            num_cuentas=("ID_Venta", "count")
+        ).reset_index()
+
+        total_moroso = agrupado_mor["monto_deuda"].sum()
+
+        st.markdown("#### 📊 Distribución por Días de Morosidad")
+        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+
+        d_0_15 = df_deudas[df_deudas["dias_antiguedad"] <= 15]["Saldo_Pendiente"].sum()
+        d_16_30 = df_deudas[(df_deudas["dias_antiguedad"] > 15) & (df_deudas["dias_antiguedad"] <= 30)]["Saldo_Pendiente"].sum()
+        d_31_60 = df_deudas[(df_deudas["dias_antiguedad"] > 30) & (df_deudas["dias_antiguedad"] <= 60)]["Saldo_Pendiente"].sum()
+        d_mas_60 = df_deudas[df_deudas["dias_antiguedad"] > 60]["Saldo_Pendiente"].sum()
+
+        m_col1.metric("🟢 0-15 Días (Vigente)", f"${d_0_15:,.2f}", f"{(d_0_15/total_moroso*100) if total_moroso>0 else 0:.1f}%")
+        m_col2.metric("🟡 16-30 Días (Preventivo)", f"${d_16_30:,.2f}", f"{(d_16_30/total_moroso*100) if total_moroso>0 else 0:.1f}%")
+        m_col3.metric("🟧 31-60 Días (Prioritario)", f"${d_31_60:,.2f}", f"{(d_31_60/total_moroso*100) if total_moroso>0 else 0:.1f}%", delta_color="inverse")
+        m_col4.metric("🚨 >60 Días (Vencida)", f"${d_mas_60:,.2f}", f"{(d_mas_60/total_moroso*100) if total_moroso>0 else 0:.1f}%", delta_color="inverse")
+
+        # Gráfico de pastel / dona de cartera vencida
+        fig_mor = px.pie(
+            agrupado_mor,
+            values='monto_deuda',
+            names='Rango_Antiguedad',
+            title='Composición de la Cartera por Antigüedad de Deuda ($ MXN)',
+            hole=0.4,
+            color_discrete_sequence=px.colors.sequential.RdBu_r
+        )
+        st.plotly_chart(fig_mor, use_container_width=True)
+
+        st.markdown("#### 📋 Detalle de Deudores por Antigüedad")
+        for rango_nombre, df_sub in df_deudas.groupby("Rango_Antiguedad"):
+            sub_tot = df_sub["Saldo_Pendiente"].sum()
+            with st.expander(f"📁 {rango_nombre} - Total: ${sub_tot:,.2f} MXN ({len(df_sub)} cuentas)", expanded=False):
+                df_sub_disp = df_sub[["Cliente", "Nombre_Vendedor", "Producto", "Fecha_Venta", "Total_Venta", "Total_Abono", "Saldo_Pendiente", "dias_antiguedad"]].copy()
+                df_sub_disp.columns = ["Cliente", "Vendedora", "Producto", "Fecha Venta", "Total Venta", "Abonado", "Deuda Pendiente", "Días Antigüedad"]
+                df_sub_disp["Total Venta"] = df_sub_disp["Total Venta"].map("${:,.2f}".format)
+                df_sub_disp["Abonado"] = df_sub_disp["Abonado"].map("${:,.2f}".format)
+                df_sub_disp["Deuda Pendiente"] = df_sub_disp["Deuda Pendiente"].map("${:,.2f}".format)
+                st.dataframe(df_sub_disp, use_container_width=True, hide_index=True)
+    else:
+        st.success("✅ ¡Felicidades! No hay deudas pendientes en la cartera.")
+
 def show():
     # Esta página requerirá rol Admin
     if st.session_state.user_role != "Admin":
@@ -508,9 +758,10 @@ def show():
     except:
         df_gastos = pd.DataFrame() # Fallback temporal si la tabla no se crea a tiempo
     
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
-        "📊 KPIs", 
-        "💡 Inteligencia y Reabastecimiento",
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
+        "📊 KPIs Mensuales", 
+        "💡 Inteligencia Financiera & GMROI",
+        "👑 Clientes VIP & Morosidad",
         "📦 Inventario", 
         "💵 Abonos/Pagos", 
         "✉️ Vendedores", 
@@ -522,6 +773,9 @@ def show():
 
     with tab2:
         render_tab_inteligencia(db)
+
+    with tab3:
+        render_tab_clientes_vips(db, df_todas)
 
     with tab1:
         st.subheader("Indicadores Clave de Desempeño")
@@ -1259,7 +1513,7 @@ def show():
         else:
             st.info("No hay ventas registradas aún.")
 
-    with tab3:
+    with tab4:
         st.subheader("💡 Inteligencia de Compras y Rotación")
         
         if not df_todas.empty:
@@ -1450,7 +1704,7 @@ def show():
         else:
             st.warning("No hay vendedores registrados en el sistema.")
 
-    with tab4:
+    with tab5:
         st.subheader("Registrar Nuevo Abono a Cuenta")
         # Desplegable inteligente de deudores
         # df_todas lo reusamos de arriba
@@ -1564,7 +1818,7 @@ def show():
         else:
             st.info("No hay ventas en el sistema.")
 
-    with tab5:
+    with tab6:
         st.subheader("Invitar Nuevo Vendedor al Sistema")
         st.markdown("Registra al vendedor y envíale automáticamente su acceso al correo de Gmail.")
 
@@ -1846,7 +2100,7 @@ def show():
         else:
             st.info("Aún no tienes vendedores registrados en el sistema.")
 
-    with tab6:
+    with tab7:
         st.subheader("🕵️ Buscador Inteligente para Correcciones")
         st.markdown("Busca cualquier registro rápidamente para modificarlo o eliminarlo permanentemente del sistema sin dejar basura ni descuadrar tus inventarios.")
         tipo_correccion = st.radio("¿Qué tipo de registro deseas corregir?", ["Ventas", "Abonos"], horizontal=True)
@@ -1990,7 +2244,7 @@ def show():
                 else:
                     st.warning("No se encontró ningún Abono coincidente.")
 
-    with tab7:
+    with tab8:
         st.subheader("Control de Gastos y Egresos Operativos")
         st.markdown("Registra todos los gastos ajenos al costo de producto base para tener un control exacto de tu Flujo Libre.")
         
@@ -2063,7 +2317,7 @@ def show():
             else:
                 st.info("Aún no tienes gastos registrados.")
 
-    with tab8:
+    with tab9:
         st.subheader("🔍 Buscador de Ventas Cerradas (Pagadas al 100%)")
         st.markdown("Encuentra rápidamente el historial de cualquier venta liquidada buscando por cliente, vendedor o producto.")
         
@@ -2135,7 +2389,7 @@ def show():
         else:
             st.info("No hay ventas cerradas (pagadas al 100%) en el sistema todavía.")
 
-    with tab9:
+    with tab10:
         st.subheader("🎭 Modo Simulación de Usuarios (Impersonation)")
         st.markdown("Selecciona a cualquier Vendedor o Contador para **iniciar sesión temporalmente como ellos**. Podrás ver todo exactamente como ellos lo ven desde sus dispositivos, e incluso registrar ventas o hacer cambios en su nombre.")
         
