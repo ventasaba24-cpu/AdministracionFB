@@ -1625,69 +1625,175 @@ def show():
             st.info("No hay ventas registradas aún.")
 
     with tab4:
-        st.subheader("💡 Inteligencia de Compras y Rotación")
+        st.subheader("💡 Inteligencia de Compras y Rotación de Stock")
+        st.markdown("Analiza la velocidad de salida de tus perfumes en tiempo real según el período de tiempo que elijas.")
         
         if not df_todas.empty:
             import datetime
+            from database import get_mexico_time
+            ahora_mx = get_mexico_time()
+            fecha_hoy = ahora_mx.date()
             
+            # --- BARRA SUPERIOR DE SELECCIÓN DE PERÍODO DE ROTACIÓN ---
+            st.markdown("""
+            <div style='background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 12px 18px; border-radius: 10px; color: white; margin-bottom: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.08);'>
+                <div style='display: flex; align-items: center; justify-content: space-between;'>
+                    <span style='font-size: 15px; font-weight: 700;'>📅 Período de Análisis de Rotación de Inventario</span>
+                    <span style='font-size: 12px; background: rgba(255,255,255,0.15); padding: 3px 10px; border-radius: 12px;'>Velocidad Semanal</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            col_r1, col_r2 = st.columns([3, 2])
+            with col_r1:
+                opc_rot_periodo = st.radio(
+                    "Selecciona el Rango de Tiempo a Medir:",
+                    [
+                        "⚡ Última Semana (7 Días)",
+                        "📅 Últimos 15 Días",
+                        "🗓️ Último Mes (30 Días)",
+                        "📆 Rango Personalizado de Fechas"
+                    ],
+                    horizontal=True,
+                    key="radio_periodo_rotacion"
+                )
+            
+            num_dias = 30
+            etiqueta_rango = "Últimos 30 días"
             df_ventas_rot = df_todas.copy()
-            df_ventas_rot['Fecha_Venta'] = pd.to_datetime(df_ventas_rot['Fecha_Venta'], errors='coerce')
+            df_ventas_rot['Fecha_Dt'] = pd.to_datetime(df_ventas_rot['Fecha_Venta'], errors='coerce')
             
-            hoy = pd.to_datetime(datetime.datetime.now())
-            hace_30_dias = hoy - datetime.timedelta(days=30)
-            
-            # Solo ventas de los ultimos 30 dias
-            df_ultimos_30 = df_ventas_rot[df_ventas_rot['Fecha_Venta'] >= hace_30_dias]
-            
-            agrupado_ventas = df_ultimos_30.groupby("Producto").agg(
-                Unidades_Vendidas=("Cantidad", "sum")
+            if opc_rot_periodo.startswith("⚡"):
+                num_dias = 7
+                etiqueta_rango = "Últimos 7 días"
+                hace_dias = pd.to_datetime(fecha_hoy - datetime.timedelta(days=7))
+                df_ventas_filtradas = df_ventas_rot[df_ventas_rot['Fecha_Dt'] >= hace_dias].copy()
+            elif opc_rot_periodo.startswith("📅"):
+                num_dias = 15
+                etiqueta_rango = "Últimos 15 días"
+                hace_dias = pd.to_datetime(fecha_hoy - datetime.timedelta(days=15))
+                df_ventas_filtradas = df_ventas_rot[df_ventas_rot['Fecha_Dt'] >= hace_dias].copy()
+            elif opc_rot_periodo.startswith("🗓️"):
+                num_dias = 30
+                etiqueta_rango = "Últimos 30 días"
+                hace_dias = pd.to_datetime(fecha_hoy - datetime.timedelta(days=30))
+                df_ventas_filtradas = df_ventas_rot[df_ventas_rot['Fecha_Dt'] >= hace_dias].copy()
+            else:
+                with col_r2:
+                    cr_a, cr_b = st.columns(2)
+                    with cr_a:
+                        f_inicio = st.date_input("Fecha Inicio", value=fecha_hoy - datetime.timedelta(days=30), key="rot_f_inicio")
+                    with cr_b:
+                        f_fin = st.date_input("Fecha Fin", value=fecha_hoy, key="rot_f_fin")
+                
+                dt_ini = pd.to_datetime(f_inicio)
+                dt_fin = pd.to_datetime(f_fin) + pd.Timedelta(days=1)
+                num_dias = max((dt_fin - dt_ini).days, 1)
+                etiqueta_rango = f"{f_inicio.strftime('%d/%m/%Y')} al {f_fin.strftime('%d/%m/%Y')} ({num_dias}d)"
+                df_ventas_filtradas = df_ventas_rot[(df_ventas_rot['Fecha_Dt'] >= dt_ini) & (df_ventas_rot['Fecha_Dt'] < dt_fin)].copy()
+
+            # Agrupar ventas del período seleccionado
+            agrupado_ventas = df_ventas_filtradas.groupby("Producto").agg(
+                Unidades_Vendidas=("Cantidad", "sum"),
+                Ingresos_Generados=("Total_Venta", "sum"),
+                Utilidad_Generada=("Utilidad_Neta", "sum")
             ).reset_index()
             
-            # La ventana es fija de 30 dias. Ritmo semanal:
-            agrupado_ventas["Rotacion_Semanal"] = (agrupado_ventas["Unidades_Vendidas"] / 30) * 7
+            # Ritmo semanal proporcional según los días medidos
+            agrupado_ventas["Rotacion_Semanal"] = (agrupado_ventas["Unidades_Vendidas"] / num_dias) * 7.0
             
             df_inv_global = db.leer_inventario()
-            stock_agrupado = pd.DataFrame(columns=["nombre", "stock"])
+            stock_agrupado = pd.DataFrame(columns=["nombre", "stock", "costo_compra"])
             if not df_inv_global.empty:
                 df_inv_global["stock"] = pd.to_numeric(df_inv_global["stock"], errors="coerce").fillna(0)
-                stock_agrupado = df_inv_global.groupby("nombre")["stock"].sum().reset_index()
+                df_inv_global["costo_compra"] = pd.to_numeric(df_inv_global["costo_compra"], errors="coerce").fillna(0.0)
+                stock_agrupado = df_inv_global.groupby("nombre").agg(
+                    stock=("stock", "sum"),
+                    costo_compra=("costo_compra", "mean")
+                ).reset_index()
             
-            # Juntamos TODO el inventario con sus ventas de 30 dias
-            df_inteligencia = pd.merge(stock_agrupado, agrupado_ventas, left_on="nombre", right_on="Producto", how="left")
-            df_inteligencia["Unidades_Vendidas"] = df_inteligencia["Unidades_Vendidas"].fillna(0)
-            df_inteligencia["Rotacion_Semanal"] = df_inteligencia["Rotacion_Semanal"].fillna(0)
-            df_inteligencia["Producto"] = df_inteligencia["nombre"] # Para que siempre tenga nombre
-            df_inteligencia["stock"] = df_inteligencia["stock"].fillna(0)
+            df_inteligencia = pd.merge(stock_agrupado, agrupado_ventas, left_on="nombre", right_on="Producto", how="outer")
+            df_inteligencia["Producto"] = df_inteligencia["nombre"].fillna(df_inteligencia["Producto"])
+            df_inteligencia["Unidades_Vendidas"] = df_inteligencia["Unidades_Vendidas"].fillna(0).astype(int)
+            df_inteligencia["Rotacion_Semanal"] = df_inteligencia["Rotacion_Semanal"].fillna(0.0)
+            df_inteligencia["stock"] = df_inteligencia["stock"].fillna(0).astype(int)
+            df_inteligencia["costo_compra"] = df_inteligencia["costo_compra"].fillna(0.0)
+            df_inteligencia["Utilidad_Generada"] = df_inteligencia["Utilidad_Generada"].fillna(0.0)
             
-            top_rotacion = df_inteligencia[df_inteligencia["Rotacion_Semanal"] > 0].sort_values(by="Rotacion_Semanal", ascending=False).head(3)
-            alertas_quiebre = df_inteligencia[(df_inteligencia["Rotacion_Semanal"] >= 0.5) & (df_inteligencia["stock"] <= 1)].sort_values(by="Rotacion_Semanal", ascending=False).head(3)
-            # Lento: No se vendió casi nada en 30 días y tenemos inventario estancado físico
-            lentos = df_inteligencia[(df_inteligencia["stock"] > 0) & (df_inteligencia["Rotacion_Semanal"] < 0.2)].sort_values(by="Rotacion_Semanal", ascending=True).head(3)
+            top_rotacion = df_inteligencia[df_inteligencia["Rotacion_Semanal"] > 0].sort_values(by="Rotacion_Semanal", ascending=False).copy()
+            alertas_quiebre = df_inteligencia[(df_inteligencia["Rotacion_Semanal"] >= 0.3) & (df_inteligencia["stock"] <= 1)].sort_values(by="Rotacion_Semanal", ascending=False).copy()
+            lentos = df_inteligencia[(df_inteligencia["stock"] > 0) & (df_inteligencia["Rotacion_Semanal"] < 0.2)].sort_values(by="stock", ascending=False).copy()
             
             c1, c2, c3 = st.columns(3)
             with c1:
-                st.markdown("##### 🌪️ Alta Rotación")
+                st.markdown(f"##### 🌪️ Alta Rotación ({len(top_rotacion)} perfumes)")
                 if not top_rotacion.empty:
+                    html_rot = "<div style='max-height: 380px; overflow-y: auto; padding-right: 4px;'>"
                     for _, r in top_rotacion.iterrows():
-                        st.success(f"**{r['Producto']}**  \nÚltimos 30d: {int(r['Unidades_Vendidas'])} | Rota: **{r['Rotacion_Semanal']:.1f}/sem**")
+                        html_rot += f"""
+                        <div style='background-color: #f0fdf4; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #16a34a; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>
+                            <div style='font-size: 13px; font-weight: bold; color: #14532d; margin-bottom: 3px;'>{r['Producto']}</div>
+                            <div style='font-size: 11px; color: #166534; display: flex; justify-content: space-between;'>
+                                <span>{etiqueta_rango}: <b>{int(r['Unidades_Vendidas'])} pzs</b></span>
+                                <span>Stock: <b>{int(r['stock'])} pzs</b></span>
+                            </div>
+                            <div style='font-size: 11px; color: #15803d; margin-top: 3px; font-weight: bold; border-top: 1px dashed #bbf7d0; padding-top: 3px;'>
+                                ⚡ Velocidad: {r['Rotacion_Semanal']:.1f}/sem | Ganancia: +${r['Utilidad_Generada']:,.2f}
+                            </div>
+                        </div>
+                        """
+                    html_rot += "</div>"
+                    st.markdown(html_rot, unsafe_allow_html=True)
                 else:
-                    st.caption("Aún no hay datos suficientes.")
+                    st.info(f"No hay ventas registradas en {etiqueta_rango}.")
                     
             with c2:
-                st.markdown("##### 🚨 Alertas Quiebre")
+                st.markdown(f"##### 🚨 Alertas Quiebre ({len(alertas_quiebre)} en riesgo)")
                 if not alertas_quiebre.empty:
+                    html_q = "<div style='max-height: 380px; overflow-y: auto; padding-right: 4px;'>"
                     for _, r in alertas_quiebre.iterrows():
-                        st.error(f"**{r['Producto']}**  \nStock Global: **{int(r['stock'])} pzs** | Rota: {r['Rotacion_Semanal']:.1f}/sem")
+                        est_pedido = 3 * r['costo_compra'] if r['costo_compra'] > 0 else 0.0
+                        ped_txt = f" (Pedir 3 pzs: ~${est_pedido:,.2f})" if est_pedido > 0 else ""
+                        html_q += f"""
+                        <div style='background-color: #fff1f2; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #f43f5e; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>
+                            <div style='font-size: 13px; font-weight: bold; color: #9f1239; margin-bottom: 3px;'>{r['Producto']}</div>
+                            <div style='font-size: 11px; color: #be123c; display: flex; justify-content: space-between;'>
+                                <span>Stock Crítico: <b style='color: #dc2626;'>{int(r['stock'])} pzs</b></span>
+                                <span>Rota: <b>{r['Rotacion_Semanal']:.1f}/sem</b></span>
+                            </div>
+                            <div style='font-size: 11px; color: #991b1b; margin-top: 3px; font-weight: bold; border-top: 1px dashed #fecdd3; padding-top: 3px;'>
+                                ⚠️ Surtido Sugerido: 3 pzs{ped_txt}
+                            </div>
+                        </div>
+                        """
+                    html_q += "</div>"
+                    st.markdown(html_q, unsafe_allow_html=True)
                 else:
-                    st.info("Todo tu stock está sano.")
+                    st.success("✅ Todo tu stock está sano.")
                     
             with c3:
-                st.markdown("##### 🐢 Inventario Lento")
+                st.markdown(f"##### 🐢 Inventario Lento ({len(lentos)} estancados)")
                 if not lentos.empty:
+                    html_l = "<div style='max-height: 380px; overflow-y: auto; padding-right: 4px;'>"
                     for _, r in lentos.iterrows():
-                        st.warning(f"**{r['Producto']}**  \nEstancado: **{int(r['stock'])} pzs** | Rota: {r['Rotacion_Semanal']:.2f}/sem")
+                        cap_t = r['stock'] * r['costo_compra']
+                        cap_txt = f" | Capital: ${cap_t:,.2f}" if cap_t > 0 else ""
+                        html_l += f"""
+                        <div style='background-color: #fffbe6; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #f59e0b; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>
+                            <div style='font-size: 13px; font-weight: bold; color: #78350f; margin-bottom: 3px;'>{r['Producto']}</div>
+                            <div style='font-size: 11px; color: #92400e; display: flex; justify-content: space-between;'>
+                                <span>Estancado: <b>{int(r['stock'])} pzs</b></span>
+                                <span>Rota: <b>{r['Rotacion_Semanal']:.2f}/sem</b></span>
+                            </div>
+                            <div style='font-size: 11px; color: #b45309; margin-top: 3px; font-weight: bold; border-top: 1px dashed #fef08a; padding-top: 3px;'>
+                                💡 Atrapado: {int(r['stock'])} pzs{cap_txt}
+                            </div>
+                        </div>
+                        """
+                    html_l += "</div>"
+                    st.markdown(html_l, unsafe_allow_html=True)
                 else:
-                    st.info("No hay inventario rezagado.")
+                    st.success("✅ No hay inventario rezagado.")
         else:
             st.info("💡 La inteligencia de compras aparecerá aquí en cuanto registres tus primeras ventas.")
             
