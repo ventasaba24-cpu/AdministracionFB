@@ -409,27 +409,41 @@ def render_tab_inteligencia(db):
     # --- SECCIÓN 3: TOP PRODUCTOS VENDIDOS Y MEJOR MARGEN ---
     col_t1, col_t2 = st.columns(2)
     with col_t1:
-        st.markdown("#### 🏆 Top Productos Más Vendidos (Piezas)")
+        st.markdown("#### 🏆 Top 10 Más Vendidos (Piezas)")
         top_volumen = df_filtered.sort_values(by='unidades_vendidas', ascending=False).head(10)
         if not top_volumen.empty:
-            df_display_vol = top_volumen[['producto_clean', 'unidades_vendidas', 'stock_actual', 'ingresos_totales', 'margen_pct_final']].copy()
-            df_display_vol.columns = ['Producto', 'Vendidos', 'Stock', 'Ingresos ($)', 'Margen %']
-            df_display_vol['Ingresos ($)'] = df_display_vol['Ingresos ($)'].map("${:,.2f}".format)
-            df_display_vol['Margen %'] = df_display_vol['Margen %'].map("{:.1f}%".format)
-            st.dataframe(df_display_vol, use_container_width=True, hide_index=True)
+            for idx_vol, r_vol in top_volumen.reset_index(drop=True).iterrows():
+                rank_num = idx_vol + 1
+                badge_icon = "🥇" if rank_num == 1 else "🥈" if rank_num == 2 else "🥉" if rank_num == 3 else f"#{rank_num}"
+                st.markdown(f"""
+                <div style='background: #ffffff; padding: 8px 12px; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); border: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; font-size: 12px;'>
+                    <div style='font-weight: bold; color: #0f172a;'>
+                        <span>{badge_icon} {r_vol['producto_clean']}</span>
+                    </div>
+                    <div style='color: #475569;'>
+                        Vendidos: <b style='color: #0f172a;'>{int(r_vol['unidades_vendidas'])} pzs</b> | Stock: <b>{int(r_vol['stock_actual'])}</b> | Margen: <b style='color: #166534;'>{r_vol['margen_pct_final']:.1f}%</b>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
     with col_t2:
-        st.markdown("#### 💎 Top Productos con Mejor Margen (%)")
+        st.markdown("#### 💎 Top 10 Mejor Margen (%)")
         df_con_v = df_filtered[df_filtered['unidades_vendidas'] > 0].copy()
         top_margen = df_con_v.sort_values(by='margen_pct_final', ascending=False).head(10)
         if not top_margen.empty:
-            df_display_mar = top_margen[['producto_clean', 'precio_unitario_final', 'costo_unitario_final', 'ganancia_unitaria', 'margen_pct_final']].copy()
-            df_display_mar.columns = ['Producto', 'P. Venta ($)', 'Costo ($)', 'Ganancia/U ($)', 'Margen %']
-            df_display_mar['P. Venta ($)'] = df_display_mar['P. Venta ($)'].map("${:,.2f}".format)
-            df_display_mar['Costo ($)'] = df_display_mar['Costo ($)'].map("${:,.2f}".format)
-            df_display_mar['Ganancia/U ($)'] = df_display_mar['Ganancia/U ($)'].map("${:,.2f}".format)
-            df_display_mar['Margen %'] = df_display_mar['Margen %'].map("{:.1f}%".format)
-            st.dataframe(df_display_mar, use_container_width=True, hide_index=True)
+            for idx_mar, r_mar in top_margen.reset_index(drop=True).iterrows():
+                rank_num = idx_mar + 1
+                badge_icon = "🥇" if rank_num == 1 else "🥈" if rank_num == 2 else "🥉" if rank_num == 3 else f"#{rank_num}"
+                st.markdown(f"""
+                <div style='background: #ffffff; padding: 8px 12px; border-radius: 8px; border-left: 4px solid #10b981; margin-bottom: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); border: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; font-size: 12px;'>
+                    <div style='font-weight: bold; color: #0f172a;'>
+                        <span>{badge_icon} {r_mar['producto_clean']}</span>
+                    </div>
+                    <div style='color: #475569;'>
+                        Venta: <b>${r_mar['precio_unitario_final']:,.2f}</b> | Costo: <b>${r_mar['costo_unitario_final']:,.2f}</b> | Margen: <b style='color: #166534; font-size: 13px;'>{r_mar['margen_pct_final']:.1f}%</b>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -440,11 +454,18 @@ def render_tab_inteligencia(db):
         capital_atrapado = (df_estancados['stock_actual'] * df_estancados['costo_unitario_final']).sum()
         st.warning(f"⚠️ **Atención**: Hay {len(df_estancados)} productos con stock igual o mayor a 3 piezas y pocas/nulas ventas. Capital total inmovilizado: **${capital_atrapado:,.2f} MXN**.")
         
-        df_est_disp = df_estancados[['producto_clean', 'stock_actual', 'unidades_vendidas', 'costo_unitario_final', 'precio_unitario_final']].copy()
-        df_est_disp.columns = ['Producto', 'Stock Detenido', 'Ventas', 'Costo Unitario ($)', 'Precio Lista ($)']
-        df_est_disp['Costo Unitario ($)'] = df_est_disp['Costo Unitario ($)'].map("${:,.2f}".format)
-        df_est_disp['Precio Lista ($)'] = df_est_disp['Precio Lista ($)'].map("${:,.2f}".format)
-        st.dataframe(df_est_disp, use_container_width=True, hide_index=True)
+        for _, r_est in df_estancados.iterrows():
+            cap_p = r_est['stock_actual'] * r_est['costo_unitario_final']
+            st.markdown(f"""
+            <div style='background-color: #fff1f2; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #f43f5e; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;'>
+                <div>
+                    <span style='font-weight: bold; color: #9f1239; font-size: 13px;'>📦 {r_est['producto_clean']}</span>
+                </div>
+                <div style='color: #881337;'>
+                    Stock Detenido: <b>{int(r_est['stock_actual'])} pzs</b> | Costo Unit: <b>${r_est['costo_unitario_final']:,.2f}</b> | Capital Atrapado: <b style='color: #e11d48;'>${cap_p:,.2f} MXN</b>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         st.info("💡 **Sugerencia de Liquidación**: Se recomienda realizar promociones de remate (ej: 15%-20% de descuento) o armar paquetes para recuperar el flujo de efectivo atascado.")
     else:
         st.success("✅ No se detectan productos con stock estancado crítico.")
@@ -462,16 +483,21 @@ def render_tab_inteligencia(db):
         df_reorder['Costo_Total_Pedido'] = df_reorder['Sugerido_Recompra'] * df_reorder['costo_unitario_final']
         df_reorder['Ganancia_Proyectada'] = df_reorder['Sugerido_Recompra'] * (df_reorder['precio_unitario_final'] - df_reorder['costo_unitario_final'])
 
+        for _, r_reo in df_reorder.iterrows():
+            st.markdown(f"""
+            <div style='background-color: #f0fdf4; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #16a34a; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;'>
+                <div>
+                    <span style='font-weight: bold; color: #14532d; font-size: 13px;'>🧪 {r_reo['producto_clean']}</span>
+                    <span style='color: #64748b; margin-left: 8px;'>(Vendidos: <b>{int(r_reo['unidades_vendidas'])} pzs</b> | Stock: <b>{int(r_reo['stock_actual'])}</b>)</span>
+                </div>
+                <div style='color: #166534;'>
+                    🎯 Pedir: <b style='color: #15803d; font-size: 13px;'>{int(r_reo['Sugerido_Recompra'])} pzs</b> | Inversión: <b>${r_reo['Costo_Total_Pedido']:,.2f}</b> | Ganancia Est: <b style='color: #166534;'>+${r_reo['Ganancia_Proyectada']:,.2f}</b>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
         df_reo_disp = df_reorder[['producto_clean', 'unidades_vendidas', 'stock_actual', 'costo_unitario_final', 'precio_unitario_final', 'Sugerido_Recompra', 'Costo_Total_Pedido', 'Ganancia_Proyectada']].copy()
         df_reo_disp.columns = ['Producto', 'Histórico Vendidos', 'Stock Actual', 'Costo Unit. ($)', 'Precio Venta ($)', 'Piezas a Pedir', 'Costo Pedido ($)', 'Ganancia Est. ($)']
-        
-        df_reo_show = df_reo_disp.copy()
-        df_reo_show['Costo Unit. ($)'] = df_reo_show['Costo Unit. ($)'].map("${:,.2f}".format)
-        df_reo_show['Precio Venta ($)'] = df_reo_show['Precio Venta ($)'].map("${:,.2f}".format)
-        df_reo_show['Costo Pedido ($)'] = df_reo_show['Costo Pedido ($)'].map("${:,.2f}".format)
-        df_reo_show['Ganancia Est. ($)'] = df_reo_show['Ganancia Est. ($)'].map("${:,.2f}".format)
-        
-        st.dataframe(df_reo_show, use_container_width=True, hide_index=True)
 
         csv_data = df_reo_disp[['Producto', 'Piezas a Pedir', 'Costo Unit. ($)', 'Costo Pedido ($)']].to_csv(index=False).encode('utf-8')
         st.download_button(
@@ -522,11 +548,13 @@ def render_tab_inteligencia(db):
             col_s2.metric("✨ Ganancia Proyectada", f"${ganancia_total_sim:,.2f}")
             col_s3.metric("📈 ROI Proyectado", f"{roi_sim:.1f}%", "Retorno sobre Inversión")
 
-            df_sim_show = df_sim.copy()
-            df_sim_show['Costo Unitario ($)'] = df_sim_show['Costo Unitario ($)'].map("${:,.2f}".format)
-            df_sim_show['Inversión Subtotal ($)'] = df_sim_show['Inversión Subtotal ($)'].map("${:,.2f}".format)
-            df_sim_show['Ganancia Est. ($)'] = df_sim_show['Ganancia Est. ($)'].map("${:,.2f}".format)
-            st.dataframe(df_sim_show, use_container_width=True, hide_index=True)
+            for _, r_sim in df_sim.iterrows():
+                st.markdown(f"""
+                <div style='background-color: #ffffff; padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;'>
+                    <div><b>🛒 {r_sim['Producto']}</b> <span style='color: #64748b;'>(Pedir: <b>{r_sim['Piezas']} pzs</b> @ ${r_sim['Costo Unitario ($)']:,.2f}/u)</span></div>
+                    <div>Inversión: <b>${r_sim['Inversión Subtotal ($)']:,.2f}</b> | Ganancia Est: <b style='color: #166534;'>${r_sim['Ganancia Est. ($)']:,.2f}</b></div>
+                </div>
+                """, unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -814,6 +842,19 @@ def show():
         st.error("Acceso DENEGADO. Requiere privilegios de Administrador.")
         st.stop()
         
+    st.markdown("""
+    <style>
+        .block-container {
+            padding-left: 1.2rem !important;
+            padding-right: 1.2rem !important;
+            max-width: 98% !important;
+        }
+        div[data-testid="stExpander"] {
+            border-radius: 8px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.title("🛡️ Panel de Control de Administración")
     
     # Importación perezosa
