@@ -1730,18 +1730,18 @@ def show():
                 if not top_rotacion.empty:
                     html_rot = "<div style='max-height: 380px; overflow-y: auto; padding-right: 4px;'>"
                     for _, r in top_rotacion.iterrows():
-                        html_rot += f"""
-                        <div style='background-color: #f0fdf4; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #16a34a; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>
-                            <div style='font-size: 13px; font-weight: bold; color: #14532d; margin-bottom: 3px;'>{r['Producto']}</div>
-                            <div style='font-size: 11px; color: #166534; display: flex; justify-content: space-between;'>
-                                <span>{etiqueta_rango}: <b>{int(r['Unidades_Vendidas'])} pzs</b></span>
-                                <span>Stock: <b>{int(r['stock'])} pzs</b></span>
-                            </div>
-                            <div style='font-size: 11px; color: #15803d; margin-top: 3px; font-weight: bold; border-top: 1px dashed #bbf7d0; padding-top: 3px;'>
-                                ⚡ Velocidad: {r['Rotacion_Semanal']:.1f}/sem | Ganancia: +${r['Utilidad_Generada']:,.2f}
-                            </div>
-                        </div>
-                        """
+                        html_rot += (
+                            f"<div style='background-color: #f0fdf4; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #16a34a; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>"
+                            f"<div style='font-size: 13px; font-weight: bold; color: #14532d; margin-bottom: 3px;'>{r['Producto']}</div>"
+                            f"<div style='font-size: 11px; color: #166534; display: flex; justify-content: space-between;'>"
+                            f"<span>{etiqueta_rango}: <b>{int(r['Unidades_Vendidas'])} pzs</b></span>"
+                            f"<span>Stock: <b>{int(r['stock'])} pzs</b></span>"
+                            f"</div>"
+                            f"<div style='font-size: 11px; color: #15803d; margin-top: 3px; font-weight: bold; border-top: 1px dashed #bbf7d0; padding-top: 3px;'>"
+                            f"⚡ Velocidad: {r['Rotacion_Semanal']:.1f}/sem | Ganancia: +${r['Utilidad_Generada']:,.2f}"
+                            f"</div>"
+                            f"</div>"
+                        )
                     html_rot += "</div>"
                     st.markdown(html_rot, unsafe_allow_html=True)
                 else:
@@ -1754,18 +1754,18 @@ def show():
                     for _, r in alertas_quiebre.iterrows():
                         est_pedido = 3 * r['costo_compra'] if r['costo_compra'] > 0 else 0.0
                         ped_txt = f" (Pedir 3 pzs: ~${est_pedido:,.2f})" if est_pedido > 0 else ""
-                        html_q += f"""
-                        <div style='background-color: #fff1f2; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #f43f5e; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>
-                            <div style='font-size: 13px; font-weight: bold; color: #9f1239; margin-bottom: 3px;'>{r['Producto']}</div>
-                            <div style='font-size: 11px; color: #be123c; display: flex; justify-content: space-between;'>
-                                <span>Stock Crítico: <b style='color: #dc2626;'>{int(r['stock'])} pzs</b></span>
-                                <span>Rota: <b>{r['Rotacion_Semanal']:.1f}/sem</b></span>
-                            </div>
-                            <div style='font-size: 11px; color: #991b1b; margin-top: 3px; font-weight: bold; border-top: 1px dashed #fecdd3; padding-top: 3px;'>
-                                ⚠️ Surtido Sugerido: 3 pzs{ped_txt}
-                            </div>
-                        </div>
-                        """
+                        html_q += (
+                            f"<div style='background-color: #fff1f2; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #f43f5e; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>"
+                            f"<div style='font-size: 13px; font-weight: bold; color: #9f1239; margin-bottom: 3px;'>{r['Producto']}</div>"
+                            f"<div style='font-size: 11px; color: #be123c; display: flex; justify-content: space-between;'>"
+                            f"<span>Stock Crítico: <b style='color: #dc2626;'>{int(r['stock'])} pzs</b></span>"
+                            f"<span>Rota: <b>{r['Rotacion_Semanal']:.1f}/sem</b></span>"
+                            f"</div>"
+                            f"<div style='font-size: 11px; color: #991b1b; margin-top: 3px; font-weight: bold; border-top: 1px dashed #fecdd3; padding-top: 3px;'>"
+                            f"⚠️ Surtido Sugerido: 3 pzs{ped_txt}"
+                            f"</div>"
+                            f"</div>"
+                        )
                     html_q += "</div>"
                     st.markdown(html_q, unsafe_allow_html=True)
                 else:
@@ -1778,18 +1778,18 @@ def show():
                     for _, r in lentos.iterrows():
                         cap_t = r['stock'] * r['costo_compra']
                         cap_txt = f" | Capital: ${cap_t:,.2f}" if cap_t > 0 else ""
-                        html_l += f"""
-                        <div style='background-color: #fffbe6; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #f59e0b; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>
-                            <div style='font-size: 13px; font-weight: bold; color: #78350f; margin-bottom: 3px;'>{r['Producto']}</div>
-                            <div style='font-size: 11px; color: #92400e; display: flex; justify-content: space-between;'>
-                                <span>Estancado: <b>{int(r['stock'])} pzs</b></span>
-                                <span>Rota: <b>{r['Rotacion_Semanal']:.2f}/sem</b></span>
-                            </div>
-                            <div style='font-size: 11px; color: #b45309; margin-top: 3px; font-weight: bold; border-top: 1px dashed #fef08a; padding-top: 3px;'>
-                                💡 Atrapado: {int(r['stock'])} pzs{cap_txt}
-                            </div>
-                        </div>
-                        """
+                        html_l += (
+                            f"<div style='background-color: #fffbe6; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #f59e0b; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>"
+                            f"<div style='font-size: 13px; font-weight: bold; color: #78350f; margin-bottom: 3px;'>{r['Producto']}</div>"
+                            f"<div style='font-size: 11px; color: #92400e; display: flex; justify-content: space-between;'>"
+                            f"<span>Estancado: <b>{int(r['stock'])} pzs</b></span>"
+                            f"<span>Rota: <b>{r['Rotacion_Semanal']:.2f}/sem</b></span>"
+                            f"</div>"
+                            f"<div style='font-size: 11px; color: #b45309; margin-top: 3px; font-weight: bold; border-top: 1px dashed #fef08a; padding-top: 3px;'>"
+                            f"💡 Atrapado: {int(r['stock'])} pzs{cap_txt}"
+                            f"</div>"
+                            f"</div>"
+                        )
                     html_l += "</div>"
                     st.markdown(html_l, unsafe_allow_html=True)
                 else:
