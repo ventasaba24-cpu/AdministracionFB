@@ -558,20 +558,118 @@ def show():
                         except Exception as e_drive:
                             st.error(f"Error conectando a Google Drive: {e_drive}")
         st.markdown("<br>", unsafe_allow_html=True)
-        if not df_todas.empty:
-            ventas_totales = df_todas["Total_Venta"].sum()
-            utilidad_neta_base = df_todas["Utilidad_Neta"].sum()
-            iva_generado = df_todas["IVA_(16%)"].sum()
-            costo_total = df_todas["Costo_Producto"].sum()
-            comisiones_directas = df_todas["Comision_Generada"].sum()
-            comisiones_directas = df_todas["Comision_Generada"].sum()
+        
+        # --- CONTROL DE PERÍODO Y FILTRO DE MES/AÑO EN KPIS ---
+        from database import get_mexico_time
+        ahora_mx = get_mexico_time()
+        
+        nombres_meses = {
+            1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+            5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+            9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+        }
+        meses_inv = {v: k for k, v in nombres_meses.items()}
+        
+        mes_actual_nombre = nombres_meses[ahora_mx.month]
+        anio_actual = ahora_mx.year
+        
+        if ahora_mx.month == 1:
+            mes_ant_num = 12
+            anio_ant_num = anio_actual - 1
+        else:
+            mes_ant_num = ahora_mx.month - 1
+            anio_ant_num = anio_actual
+        mes_anterior_nombre = nombres_meses[mes_ant_num]
+        
+        anios_disponibles = [anio_actual]
+        if not df_todas.empty and "Fecha_Venta" in df_todas.columns:
+            try:
+                dt_temp = pd.to_datetime(df_todas["Fecha_Venta"], errors='coerce')
+                anios_extra = dt_temp.dt.year.dropna().unique().astype(int).tolist()
+                anios_disponibles = sorted(list(set(anios_disponibles + anios_extra)), reverse=True)
+            except Exception:
+                pass
+
+        st.markdown(f"""
+        <div style='background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 14px 18px; border-radius: 10px; color: white; margin-bottom: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);'>
+            <div style='display: flex; align-items: center; justify-content: space-between;'>
+                <span style='font-size: 16px; font-weight: 700;'>📅 Período de Análisis Financiero</span>
+                <span style='font-size: 12px; background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 15px;'>Filtro Dinámico KPI</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col_f1, col_f2 = st.columns([3, 2])
+        with col_f1:
+            opc_presel = st.radio(
+                "Selección Rápida de Período:",
+                [
+                    f"🟢 Este Mes ({mes_actual_nombre} {anio_actual})",
+                    f"⏪ Mes Anterior ({mes_anterior_nombre} {anio_ant_num})",
+                    "🗓️ Elegir Mes Específico",
+                    "♾️ Histórico Completo (Todos los Tiempos)"
+                ],
+                horizontal=True,
+                key="radio_filtro_kpi"
+            )
+        
+        target_year = None
+        target_month = None
+        etiqueta_periodo = "Histórico Completo (Todos los Tiempos)"
+        
+        if opc_presel.startswith("🟢"):
+            target_year = anio_actual
+            target_month = ahora_mx.month
+            etiqueta_periodo = f"{mes_actual_nombre} {anio_actual}"
+        elif opc_presel.startswith("⏪"):
+            target_year = anio_ant_num
+            target_month = mes_ant_num
+            etiqueta_periodo = f"{mes_anterior_nombre} {anio_ant_num}"
+        elif opc_presel.startswith("🗓️"):
+            with col_f2:
+                cf_a, cf_m = st.columns(2)
+                with cf_a:
+                    idx_a = anios_disponibles.index(anio_actual) if anio_actual in anios_disponibles else 0
+                    sel_a = st.selectbox("📆 Año", options=anios_disponibles, index=idx_a, key="sel_kpi_anio")
+                with cf_m:
+                    sel_m_nombre = st.selectbox("🗓️ Mes", options=list(nombres_meses.values()), index=ahora_mx.month - 1, key="sel_kpi_mes")
+                target_year = sel_a
+                target_month = meses_inv[sel_m_nombre]
+                etiqueta_periodo = f"{sel_m_nombre} {sel_a}"
+        else:
+            etiqueta_periodo = "Histórico Completo (Todos los Tiempos)"
             
-            # GASTOS EXTERNOS
-            total_gastos = df_gastos["Monto"].sum() if not df_gastos.empty else 0.0
+        st.caption(f"ℹ️ **Período Activo de Indicadores:** {etiqueta_periodo}")
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Filtrado de DataFrames según el período activo
+        df_todas_kpi = df_todas.copy()
+        df_gastos_kpi = df_gastos.copy()
+        
+        if target_year is not None and target_month is not None:
+            if not df_todas.empty and "Fecha_Venta" in df_todas.columns:
+                dt_v = pd.to_datetime(df_todas["Fecha_Venta"], errors='coerce')
+                mask_v = (dt_v.dt.year == target_year) & (dt_v.dt.month == target_month)
+                df_todas_kpi = df_todas[mask_v].copy()
+                
+            if not df_gastos.empty and "Fecha" in df_gastos.columns:
+                dt_g = pd.to_datetime(df_gastos["Fecha"], errors='coerce')
+                mask_g = (dt_g.dt.year == target_year) & (dt_g.dt.month == target_month)
+                df_gastos_kpi = df_gastos[mask_g].copy()
+
+        if not df_todas_kpi.empty:
+            ventas_totales = df_todas_kpi["Total_Venta"].sum()
+            utilidad_neta_base = df_todas_kpi["Utilidad_Neta"].sum()
+            iva_generado = df_todas_kpi["IVA_(16%)"].sum()
+            costo_total = df_todas_kpi["Costo_Producto"].sum()
+            comisiones_directas = df_todas_kpi["Comision_Generada"].sum()
+            
+            # GASTOS EXTERNOS DEL PERÍODO
+            total_gastos = df_gastos_kpi["Monto"].sum() if not df_gastos_kpi.empty else 0.0
             utilidad_neta_real = utilidad_neta_base - total_gastos
             
-            producto_top = df_todas.groupby("Producto")["Total_Venta"].sum().idxmax() if not df_todas.empty else "N/A"
-            vendedor_top = df_todas.groupby("Nombre_Vendedor")["Total_Venta"].sum().idxmax() if not df_todas.empty else "N/A"
+            producto_top = df_todas_kpi.groupby("Producto")["Total_Venta"].sum().idxmax() if not df_todas_kpi.empty else "N/A"
+            vendedor_top = df_todas_kpi.groupby("Nombre_Vendedor")["Total_Venta"].sum().idxmax() if not df_todas_kpi.empty else "N/A"
             
             col1, col2, col3, col4, col5 = st.columns(5)
             col1.metric("Ventas Totales Brutas", f"${ventas_totales:,.2f}")
@@ -584,8 +682,8 @@ def show():
             
             # --- SECCION: SALUD DE COBRANZA ---
             st.markdown("<h4 style='color: #475569;'>📊 Salud Financiera y Cobranza</h4>", unsafe_allow_html=True)
-            abonos_totales = df_todas["Total_Abono"].sum()
-            deuda_calle = df_todas["Saldo_Pendiente"].sum()
+            abonos_totales = df_todas_kpi["Total_Abono"].sum()
+            deuda_calle = df_todas_kpi["Saldo_Pendiente"].sum()
             tasa_cobranza = (abonos_totales / ventas_totales * 100) if ventas_totales > 0 else 0
             
             # Dinero esperando en stock:
@@ -607,7 +705,7 @@ def show():
             # --- SECCION: TOP 3 PRODUCTOS ---
             st.markdown("<h4 style='color: #475569;'>🏆 Top 3 Productos Estrella (Por Rentabilidad Pura)</h4>", unsafe_allow_html=True)
             
-            df_prod_kpi = df_todas.groupby("Producto").agg({
+            df_prod_kpi = df_todas_kpi.groupby("Producto").agg({
                 "Total_Venta": "sum",
                 "Utilidad_Neta": "sum",
                 "Cantidad": "sum"
@@ -633,7 +731,7 @@ def show():
             
             # --- SECCION: TOP 3 VENDEDORES ---
             st.markdown("<h4 style='color: #475569;'>🔥 Top 3 Mejores Vendedores (Por Volumen de Ganancia)</h4>", unsafe_allow_html=True)
-            df_vend_kpi = df_todas.groupby("Nombre_Vendedor").agg({
+            df_vend_kpi = df_todas_kpi.groupby("Nombre_Vendedor").agg({
                 "Total_Venta": "sum",
                 "Utilidad_Neta": "sum"
             }).reset_index().sort_values(by="Utilidad_Neta", ascending=False).head(3)
@@ -653,8 +751,8 @@ def show():
             
             # --- SECCION: BUSINESS INTELLIGENCE (SOLO ADMIN) ---
             with st.expander("📈 Ver Analíticas y Tendencias (Business Intelligence)", expanded=False):
-                if not df_todas.empty:
-                    df_bi = df_todas.copy()
+                if not df_todas_kpi.empty:
+                    df_bi = df_todas_kpi.copy()
                     # 1. Vectorización ultrarrápida para días sin abono
                     df_bi["dias_sin_abono"] = np.where(
                         df_bi["Saldo_Pendiente"] > 0,
@@ -727,7 +825,7 @@ def show():
                             
             st.markdown("---")
             st.subheader("Desglose Financiero y Comisiones por Vendedor")
-            df_com = df_todas.groupby("Nombre_Vendedor").agg({
+            df_com = df_todas_kpi.groupby("Nombre_Vendedor").agg({
                 "Total_Venta": "sum",
                 "Costo_Producto": "sum",
                 "IVA_(16%)": "sum",
@@ -755,9 +853,9 @@ def show():
             
             st.markdown("---")
             st.subheader("🧪 Rentabilidad Específica por Producto")
-            if "Producto" in df_todas.columns:
+            if "Producto" in df_todas_kpi.columns:
                 # Agrupamos SOLO por Producto para unificar a nivel empresarial sin importar que un vendedor tenga "Proveedor Generico" y otro "Desconocido"
-                df_perfumes = df_todas.groupby(["Producto"]).agg({
+                df_perfumes = df_todas_kpi.groupby(["Producto"]).agg({
                     "Total_Venta": ["count", "sum"],
                     "Costo_Producto": "sum",
                     "IVA_(16%)": "sum",
@@ -767,6 +865,7 @@ def show():
                 # Aplanar los niveles del DataFrame generados por count/sum
                 df_perfumes.columns = ["Unidades_Vendidas", "Bruto_Ingresado", "Inversion_Total", "IVA_Retenido", "Comisiones_Pagadas", "Utilidad_Real_Meta"]
                 df_perfumes = df_perfumes.reset_index().sort_values(by="Utilidad_Real_Meta", ascending=False)
+
                 
                 try:
                     from st_keyup import st_keyup
