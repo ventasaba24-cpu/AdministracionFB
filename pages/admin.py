@@ -760,90 +760,127 @@ def show():
             
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # --- SECCIÓN: SEGMENTACIÓN DE MERCADO POR RANGO DE PRECIO Y MARGEN ---
-            st.markdown("<h4 style='color: #475569;'>🎯 Segmentación de Mercado por Rango de Precio y Margen Real</h4>", unsafe_allow_html=True)
-            st.caption(f"Análisis de rentabilidad y rotación por gama de precio para **{etiqueta_periodo}**.")
+            # --- SECCIÓN: SEGMENTACIÓN DE MERCADO POR RANGO DE PRECIO Y MARGEN (5 GAMAS COMPLETAS) ---
+            st.markdown("<h4 style='color: #475569;'>🎯 Rendimiento por Gama de Precio y Margen Real</h4>", unsafe_allow_html=True)
+            st.caption(f"Análisis de rentabilidad y rotación de las **5 Gamas Completas** para **{etiqueta_periodo}**.")
             
-            if not df_todas_kpi.empty:
-                df_seg = df_todas_kpi.copy()
-                df_seg["Cantidad"] = pd.to_numeric(df_seg["Cantidad"], errors="coerce").fillna(1)
-                df_seg["precio_unitario"] = df_seg["Total_Venta"] / df_seg["Cantidad"]
-                
-                def categorizar_gama(p):
-                    if p < 500:
-                        return "1. Económicos / Varianza (< $500)"
-                    elif p <= 1000:
-                        return "2. Accesible / Perfumería Árabe Masiva ($500 - $1,000)"
-                    elif p <= 1800:
-                        return "3. Gama Media / Diseñador Popular ($1,000 - $1,800)"
-                    elif p <= 2500:
-                        return "4. Gama Alta Diseñador ($1,800 - $2,500)"
+            # Definición maestra de las 5 Gamas fijas del negocio
+            gamas_maestras = [
+                {
+                    "nombre": "2. Accesible / Perfumería Árabe Masiva",
+                    "rango": "($500 - $1,000 MXN)",
+                    "icono": "🟢",
+                    "border": "#22c55e",
+                    "bg": "#f0fdf4",
+                    "func": lambda p: 500 <= p <= 1000
+                },
+                {
+                    "nombre": "3. Gama Media / Diseñador Popular",
+                    "rango": "($1,000 - $1,800 MXN)",
+                    "icono": "🔵",
+                    "border": "#3b82f6",
+                    "bg": "#eff6ff",
+                    "func": lambda p: 1000 < p <= 1800
+                },
+                {
+                    "nombre": "4. Gama Alta Diseñador",
+                    "rango": "($1,800 - $2,500 MXN)",
+                    "icono": "🟣",
+                    "border": "#a855f7",
+                    "bg": "#faf5ff",
+                    "func": lambda p: 1800 < p <= 2500
+                },
+                {
+                    "nombre": "5. Nicho / Lujo / Gran Formato",
+                    "rango": "(> $2,500 MXN)",
+                    "icono": "💎",
+                    "border": "#06b6d4",
+                    "bg": "#ecfeff",
+                    "func": lambda p: p > 2500
+                },
+                {
+                    "nombre": "1. Económicos / Varianza",
+                    "rango": "(< $500 MXN)",
+                    "icono": "🟡",
+                    "border": "#eab308",
+                    "bg": "#fefce8",
+                    "func": lambda p: p < 500
+                }
+            ]
+
+            df_kpi_prep = df_todas_kpi.copy() if not df_todas_kpi.empty else pd.DataFrame()
+            if not df_kpi_prep.empty:
+                df_kpi_prep["Cantidad"] = pd.to_numeric(df_kpi_prep["Cantidad"], errors="coerce").fillna(1)
+                df_kpi_prep["precio_unitario"] = df_kpi_prep["Total_Venta"] / df_kpi_prep["Cantidad"]
+
+            total_ingreso_periodo = df_kpi_prep["Total_Venta"].sum() if not df_kpi_prep.empty else 0.0
+
+            for idx_gama, g_info in enumerate(gamas_maestras):
+                # Filtrar ventas correspondientes a esta gama
+                if not df_kpi_prep.empty:
+                    df_g_v = df_kpi_prep[df_kpi_prep["precio_unitario"].apply(g_info["func"])].copy()
+                else:
+                    df_g_v = pd.DataFrame()
+
+                pzs_g = int(df_g_v["Cantidad"].sum()) if not df_g_v.empty else 0
+                ing_g = float(df_g_v["Total_Venta"].sum()) if not df_g_v.empty else 0.0
+                util_g = float(df_g_v["Utilidad_Neta"].sum()) if not df_g_v.empty else 0.0
+                pct_neg = (ing_g / total_ingreso_periodo * 100) if total_ingreso_periodo > 0 else 0.0
+                margen_g = (util_g / ing_g * 100) if ing_g > 0 else 0.0
+
+                # Tarjeta CSS para cada Gama
+                st.markdown(f"""
+                <div style='background-color: {g_info["bg"]}; padding: 14px 18px; border-radius: 10px; border-left: 5px solid {g_info["border"]}; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);'>
+                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;'>
+                        <div style='font-size: 15px; font-weight: bold; color: #0f172a;'>
+                            {g_info["icono"]} {g_info["nombre"]} <span style='font-size: 13px; font-weight: normal; color: #64748b;'>{g_info["rango"]}</span>
+                        </div>
+                        <div style='font-size: 12px; font-weight: 700; color: {g_info["border"]}; background: rgba(255,255,255,0.7); padding: 3px 10px; border-radius: 12px;'>
+                            Margen: {margen_g:.1f}%
+                        </div>
+                    </div>
+                    <div style='display: grid; grid-template-columns: 1fr 1.2fr 1fr 1.2fr; gap: 10px; background-color: #ffffff; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.05);'>
+                        <div><span style='font-size: 11px; color: #64748b; font-weight: 600;'>🛒 Piezas Vendidas</span><br><span style='font-size: 15px; font-weight: 800; color: #0f172a;'>{pzs_g} pzs</span></div>
+                        <div><span style='font-size: 11px; color: #64748b; font-weight: 600;'>💰 Ingresos Totales</span><br><span style='font-size: 15px; font-weight: 800; color: #0f172a;'>${ing_g:,.2f}</span></div>
+                        <div><span style='font-size: 11px; color: #64748b; font-weight: 600;'>📊 % del Negocio</span><br><span style='font-size: 15px; font-weight: 800; color: #3b82f6;'>{pct_neg:.1f}%</span></div>
+                        <div><span style='font-size: 11px; color: #166534; font-weight: 600;'>✨ Ganancia Neta</span><br><span style='font-size: 15px; font-weight: 800; color: #15803d;'>${util_g:,.2f}</span></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Contenedor desplegable nativo con 1 clic para ver Top 5 Perfumes de esta Gama
+                with st.expander(f"👁️ Desplegar Top 5 Perfumes de {g_info['nombre']} ({pzs_g} vendidos en {etiqueta_periodo})", expanded=False):
+                    if not df_g_v.empty:
+                        top_5_g = df_g_v.groupby("Producto").agg(
+                            piezas=("Cantidad", "sum"),
+                            ingreso=("Total_Venta", "sum"),
+                            utilidad=("Utilidad_Neta", "sum")
+                        ).reset_index()
+
+                        top_5_g["margen_prod"] = np.where(top_5_g["ingreso"] > 0, (top_5_g["utilidad"] / top_5_g["ingreso"]) * 100, 0.0)
+                        top_5_g["precio_prom"] = top_5_g["ingreso"] / top_5_g["piezas"]
+                        top_5_g = top_5_g.sort_values(by="piezas", ascending=False).head(5)
+
+                        for idx_t, r_t in enumerate(top_5_g.to_dict('records')):
+                            p_num = idx_t + 1
+                            med = "🥇" if p_num == 1 else "🥈" if p_num == 2 else "🥉" if p_num == 3 else f"#{p_num}"
+                            st.markdown(f"""
+                            <div style='background-color: #ffffff; padding: 8px 12px; border-radius: 6px; margin-bottom: 5px; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;'>
+                                <div>
+                                    <span style='font-size: 13px; font-weight: bold; color: #1e293b;'>{med} {r_t['Producto']}</span>
+                                    <span style='font-size: 11px; color: #64748b; margin-left: 8px;'>({int(r_t['piezas'])} pzs | Precio Prom: ${r_t['precio_prom']:,.2f})</span>
+                                </div>
+                                <div style='font-size: 12px;'>
+                                    <span style='color: #475569; margin-right: 10px;'>Ingreso: <b>${r_t['ingreso']:,.2f}</b></span>
+                                    <span style='color: #166534; font-weight: 700;'>Ganancia: ${r_t['utilidad']:,.2f} ({r_t['margen_prod']:.1f}%)</span>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
                     else:
-                        return "5. Nicho / Lujo / Gran Formato (> $2,500)"
-                        
-                df_seg["Gama"] = df_seg["precio_unitario"].apply(categorizar_gama)
-                
-                # Agrupación por gama
-                agrup_gama = df_seg.groupby("Gama").agg(
-                    piezas_vendidas=("Cantidad", "sum"),
-                    ingreso_total=("Total_Venta", "sum"),
-                    utilidad_real=("Utilidad_Neta", "sum")
-                ).reset_index()
-                
-                total_ingreso_periodo = df_seg["Total_Venta"].sum()
-                agrup_gama["pct_negocio"] = np.where(total_ingreso_periodo > 0, (agrup_gama["ingreso_total"] / total_ingreso_periodo) * 100, 0.0)
-                agrup_gama["margen_pct"] = np.where(agrup_gama["ingreso_total"] > 0, (agrup_gama["utilidad_real"] / agrup_gama["ingreso_total"]) * 100, 0.0)
-                
-                # Ordenar de mayor a menor ingreso
-                agrup_gama = agrup_gama.sort_values(by="ingreso_total", ascending=False)
-                
-                # Formatear tabla limpia para visualización
-                df_gama_show = agrup_gama.copy()
-                df_gama_show["Piezas Vendidas"] = df_gama_show["piezas_vendidas"].astype(int)
-                df_gama_show["Ingreso Total ($)"] = df_gama_show["ingreso_total"].map("${:,.2f}".format)
-                df_gama_show["% del Negocio"] = df_gama_show["pct_negocio"].map("{:.1f}%".format)
-                df_gama_show["Utilidad Real ($)"] = df_gama_show["utilidad_real"].map("${:,.2f}".format)
-                df_gama_show["Margen Ganancia (%)"] = df_gama_show["margen_pct"].map("{:.1f}%".format)
-                
-                df_gama_show = df_gama_show[["Gama", "Piezas Vendidas", "Ingreso Total ($)", "% del Negocio", "Utilidad Real ($)", "Margen Ganancia (%)"]]
-                df_gama_show.columns = ["Rango de Precio / Gama", "Piezas Vendidas", "Ingreso Total ($)", "% del Negocio", "Ganancia Neta ($)", "Margen Ganancia (%)"]
-                
-                st.dataframe(df_gama_show, use_container_width=True, hide_index=True)
-                
-                # --- INTERACTIVIDAD: TOP 5 PERFUMES POR GAMA SELECCIONADA ---
-                gamas_disponibles = agrup_gama["Gama"].tolist()
-                if gamas_disponibles:
-                    sel_gama_top = st.selectbox(
-                        "🔍 Selecciona una Gama para explorar sus Top 5 Perfumes y Rentabilidad:",
-                        options=gamas_disponibles,
-                        key="sel_gama_top_kpi"
-                    )
-                    
-                    df_sub_gama = df_seg[df_seg["Gama"] == sel_gama_top].copy()
-                    top_5_gama = df_sub_gama.groupby("Producto").agg(
-                        piezas=("Cantidad", "sum"),
-                        ingreso=("Total_Venta", "sum"),
-                        utilidad=("Utilidad_Neta", "sum")
-                    ).reset_index()
-                    
-                    top_5_gama["margen_prod"] = np.where(top_5_gama["ingreso"] > 0, (top_5_gama["utilidad"] / top_5_gama["ingreso"]) * 100, 0.0)
-                    top_5_gama["precio_prom"] = top_5_gama["ingreso"] / top_5_gama["piezas"]
-                    
-                    top_5_gama = top_5_gama.sort_values(by="piezas", ascending=False).head(5)
-                    
-                    st.markdown(f"##### 🏆 Top 5 Perfumes en **{sel_gama_top}** ({etiqueta_periodo})")
-                    
-                    df_top5_show = top_5_gama.copy()
-                    df_top5_show["Piezas"] = df_top5_show["piezas"].astype(int)
-                    df_top5_show["Precio Prom. ($)"] = df_top5_show["precio_prom"].map("${:,.2f}".format)
-                    df_top5_show["Ingreso Total ($)"] = df_top5_show["ingreso"].map("${:,.2f}".format)
-                    df_top5_show["Ganancia Neta ($)"] = df_top5_show["utilidad"].map("${:,.2f}".format)
-                    df_top5_show["Margen (%)"] = df_top5_show["margen_prod"].map("{:.1f}%".format)
-                    
-                    df_top5_show = df_top5_show[["Producto", "Piezas", "Precio Prom. ($)", "Ingreso Total ($)", "Ganancia Neta ($)", "Margen (%)"]]
-                    st.dataframe(df_top5_show, use_container_width=True, hide_index=True)
+                        st.info(f"ℹ️ No se registraron ventas en la gama {g_info['nombre']} durante {etiqueta_periodo}.")
 
             st.markdown("<br>", unsafe_allow_html=True)
+
             
             # --- SECCION: TOP 3 PRODUCTOS ---
             st.markdown("<h4 style='color: #475569;'>🏆 Top 3 Productos Estrella (Por Rentabilidad Pura)</h4>", unsafe_allow_html=True)
