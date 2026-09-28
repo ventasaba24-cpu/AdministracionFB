@@ -700,6 +700,64 @@ def show():
             cal3.metric("🎯 Tasa de Cobranza", f"{tasa_cobranza:.1f}%", f"{tasa_cobranza-100:.1f}% vs Ideal")
             cal4.metric("📦 Retorno Estimado (Stock)", f"${valor_inventario:,.2f}", "Potencial si vendes todo", delta_color="off")
             
+            # --- BURBUJA DE CUENTAS PENDIENTES DEL PERÍODO SELECCIONADO ---
+            df_pendientes_periodo = df_todas_kpi[df_todas_kpi["Saldo_Pendiente"] > 0].copy()
+            
+            if not df_pendientes_periodo.empty:
+                total_deuda_per = df_pendientes_periodo["Saldo_Pendiente"].sum()
+                num_ventas_per = len(df_pendientes_periodo)
+                
+                st.markdown(f"""
+                <div style='background-color: #fef2f2; padding: 14px 18px; border-radius: 10px; border: 1px solid #fca5a5; margin-top: 12px; margin-bottom: 12px;'>
+                    <div style='font-size: 15px; font-weight: bold; color: #991b1b; display: flex; align-items: center; justify-content: space-between;'>
+                        <span>🚨 Cuentas por Cerrar de {etiqueta_periodo}</span>
+                        <span style='font-size: 13px; background-color: #fee2e2; padding: 3px 10px; border-radius: 12px; color: #991b1b;'>{num_ventas_per} {'venta pendiente' if num_ventas_per == 1 else 'ventas pendientes'} • Total: ${total_deuda_per:,.2f} MXN</span>
+                    </div>
+                    <div style='font-size: 12px; color: #7f1d1d; margin-top: 4px; margin-bottom: 10px;'>
+                        Las siguientes personas tienen saldo pendiente de liquidar correspondiente a las ventas realizadas en este período:
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                for _, r_pend in df_pendientes_periodo.iterrows():
+                    f_venta_str = r_pend.get('Fecha_Venta', '')
+                    cliente_str = r_pend.get('Cliente', 'Cliente Desconocido')
+                    vendedor_str = r_pend.get('Nombre_Vendedor', 'Desconocido')
+                    prod_str = r_pend.get('Producto', 'Producto')
+                    monto_tot = float(r_pend.get('Total_Venta', 0.0))
+                    monto_ab = float(r_pend.get('Total_Abono', 0.0))
+                    saldo_pen = float(r_pend.get('Saldo_Pendiente', 0.0))
+                    
+                    st.markdown(f"""
+                    <div style='background-color: #ffffff; padding: 12px 15px; border-radius: 8px; border-left: 4px solid #ef4444; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);'>
+                        <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;'>
+                            <div>
+                                <span style='font-size: 14px; font-weight: bold; color: #0f172a;'>👤 Cliente: {cliente_str}</span>
+                                <span style='font-size: 12px; color: #64748b; margin-left: 10px;'>🏷️ {prod_str}</span>
+                            </div>
+                            <div style='font-size: 12px; color: #64748b;'>
+                                👩‍💼 Vendedora: <b>{vendedor_str}</b> | 📅 Venta: {f_venta_str}
+                            </div>
+                        </div>
+                        <div style='display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; background-color: #fafafa; padding: 8px 12px; border-radius: 6px;'>
+                            <div><span style='font-size: 11px; color: #475569; font-weight: 600;'>Total Venta</span><br><span style='font-size: 14px; font-weight: 700; color: #0f172a;'>${monto_tot:,.2f}</span></div>
+                            <div><span style='font-size: 11px; color: #166534; font-weight: 600;'>Abonado / Cobrado</span><br><span style='font-size: 14px; font-weight: 700; color: #15803d;'>${monto_ab:,.2f}</span></div>
+                            <div><span style='font-size: 11px; color: #991b1b; font-weight: 600;'>Resta por Cobrar</span><br><span style='font-size: 14px; font-weight: 800; color: #dc2626;'>${saldo_pen:,.2f}</span></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style='background-color: #f0fdf4; padding: 12px 18px; border-radius: 10px; border: 1px solid #bbf7d0; margin-top: 12px; margin-bottom: 12px;'>
+                    <div style='font-size: 14px; font-weight: bold; color: #166534; display: flex; align-items: center; gap: 8px;'>
+                        ✅ <span>¡Cobranza Perfecta en {etiqueta_periodo}!</span>
+                    </div>
+                    <div style='font-size: 12px; color: #15803d; margin-top: 2px;'>
+                        Todas las ventas registradas en este período han sido cobradas y liquidadas al 100%. No hay saldos pendientes.
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
             st.markdown("<br>", unsafe_allow_html=True)
             
             # --- SECCION: TOP 3 PRODUCTOS ---
