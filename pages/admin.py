@@ -622,13 +622,30 @@ def render_tab_clientes_vips(db, df_todas):
     v_tab1, v_tab2 = st.tabs(["📋 Lista Completa LTV", "🌟 Cuadro de Honor Top 10"])
 
     with v_tab1:
-        df_vip_disp = vip_res[["Cliente", "Categoría_VIP", "compras_totales", "abonos_totales", "saldo_pendiente", "num_pedidos", "ticket_promedio", "dias_inactivo"]].copy()
-        df_vip_disp.columns = ["Cliente", "Nivel VIP", "Total Comprado (LTV)", "Total Abonado", "Saldo Pendiente", "N° Pedidos", "Ticket Prom.", "Días Inactivo"]
-        df_vip_disp["Total Comprado (LTV)"] = df_vip_disp["Total Comprado (LTV)"].map("${:,.2f}".format)
-        df_vip_disp["Total Abonado"] = df_vip_disp["Total Abonado"].map("${:,.2f}".format)
-        df_vip_disp["Saldo Pendiente"] = df_vip_disp["Saldo Pendiente"].map("${:,.2f}".format)
-        df_vip_disp["Ticket Prom."] = df_vip_disp["Ticket Prom."].map("${:,.2f}".format)
-        st.dataframe(df_vip_disp, use_container_width=True, hide_index=True)
+        for idx_vip, r_vip in vip_res.iterrows():
+            tier_lbl, bg_c, text_c = clasificar_vip(r_vip)
+            deuda = float(r_vip['saldo_pendiente'])
+            deuda_html = f"<span style='color: #dc2626; font-weight: 800;'>Deuda: ${deuda:,.2f}</span>" if deuda > 0 else "<span style='color: #166534; font-weight: 700;'>Al día ($0.00)</span>"
+            
+            st.markdown(f"""
+            <div style='background: #ffffff; padding: 14px 18px; border-radius: 10px; border-left: 5px solid {text_c}; margin-bottom: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.04); border-top: 1px solid #f1f5f9; border-right: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9;'>
+                <div style='display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;'>
+                    <div>
+                        <span style='font-size: 16px; font-weight: 800; color: #0f172a;'>👤 {r_vip['Cliente']}</span>
+                        <span style='font-size: 11px; font-weight: 700; color: {text_c}; background: {bg_c}; padding: 3px 10px; border-radius: 12px; margin-left: 8px;'>{tier_lbl}</span>
+                    </div>
+                    <div style='font-size: 15px; font-weight: 900; color: #0f172a;'>
+                        <span style='font-size: 11px; color: #64748b; font-weight: normal;'>LTV Acumulado: </span><span style='color: #166534;'>${r_vip['compras_totales']:,.2f} MXN</span>
+                    </div>
+                </div>
+                <div style='display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; background-color: #f8fafc; padding: 10px 12px; border-radius: 8px; font-size: 12px; color: #334155;'>
+                    <div><span style='color: #64748b; font-weight: 600;'>💳 Total Abonado</span><br><span style='font-weight: 700; color: #0f172a;'>${r_vip['abonos_totales']:,.2f}</span></div>
+                    <div><span style='color: #64748b; font-weight: 600;'>🚨 Estado Saldo</span><br>{deuda_html}</div>
+                    <div><span style='color: #64748b; font-weight: 600;'>🛒 Frecuencia</span><br><span style='font-weight: 700; color: #0f172a;'>{r_vip['num_pedidos']} {'pedidos' if r_vip['num_pedidos'] != 1 else 'pedido'} (Prom: ${r_vip['ticket_promedio']:,.2f})</span></div>
+                    <div><span style='color: #64748b; font-weight: 600;'>🕒 Actividad</span><br><span style='font-weight: 700; color: #0f172a;'>Hace {r_vip['dias_inactivo']} días</span></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
     with v_tab2:
         top_10_vip = vip_res.head(10)
@@ -664,10 +681,33 @@ def render_tab_clientes_vips(db, df_todas):
 
     if not df_inactivos.empty:
         st.warning(f"⚠️ Hay **{len(df_inactivos)} clientes VIP** en riesgo de enfriamiento (más de 45 días sin comprar). ¡Oportunidad para campaña de reactivación por WhatsApp!")
-        df_inac_disp = df_inactivos[["Cliente", "Categoría_VIP", "compras_totales", "dias_inactivo", "num_pedidos"]].copy()
-        df_inac_disp.columns = ["Cliente", "Categoría", "LTV Histórico ($)", "Días Sin Comprar", "Total Pedidos"]
-        df_inac_disp["LTV Histórico ($)"] = df_inac_disp["LTV Histórico ($)"].map("${:,.2f}".format)
-        st.dataframe(df_inac_disp, use_container_width=True, hide_index=True)
+        for _, r_in in df_inactivos.iterrows():
+            tier_lbl, bg_c, text_c = clasificar_vip(r_in)
+            msg_encoded = f"Hola%20{r_in['Cliente']},%20esperamos%20te%20encuentres%20excelente.%20Te%20contactamos%20de%20Cat%C3%A1logo%20FB%20para%20ofrecerte%20nuestras%20nuevas%20fragancias%20exclusivas."
+            
+            st.markdown(f"""
+            <div style='background-color: #fff7ed; padding: 14px 18px; border-radius: 10px; border-left: 5px solid #ea580c; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);'>
+                <div style='display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;'>
+                    <div>
+                        <span style='font-size: 15px; font-weight: bold; color: #9a3412;'>👤 {r_in['Cliente']}</span>
+                        <span style='font-size: 11px; font-weight: 700; color: {text_c}; background: #ffffff; padding: 2px 8px; border-radius: 10px; margin-left: 8px;'>{tier_lbl}</span>
+                    </div>
+                    <div style='font-size: 13px; font-weight: 800; color: #dc2626; background: #fee2e2; padding: 4px 12px; border-radius: 12px;'>
+                        ⏳ Inactivo: {r_in['dias_inactivo']} días sin comprar
+                    </div>
+                </div>
+                <div style='display: flex; justify-content: space-between; align-items: center; margin-top: 10px; background: #ffffff; padding: 10px 14px; border-radius: 8px; border: 1px solid #ffedd5;'>
+                    <div style='font-size: 13px; color: #431407;'>
+                        💎 <b>LTV Histórico:</b> <span style='color: #166534; font-weight: 800;'>${r_in['compras_totales']:,.2f} MXN</span> (<b>{r_in['num_pedidos']}</b> compras realizadas)
+                    </div>
+                    <div>
+                        <a href="https://wa.me/?text={msg_encoded}" target="_blank" style="text-decoration: none; background: #25d366; color: white; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: bold; display: inline-flex; align-items: center; gap: 4px;">
+                            💬 Reactivar por WhatsApp
+                        </a>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
     else:
         st.success("✅ ¡Felicidades! Tus clientes VIP están activos y comprando de forma recurrente.")
 
@@ -728,13 +768,43 @@ def render_tab_clientes_vips(db, df_todas):
         st.markdown("#### 📋 Detalle de Deudores por Antigüedad")
         for rango_nombre, df_sub in df_deudas.groupby("Rango_Antiguedad"):
             sub_tot = df_sub["Saldo_Pendiente"].sum()
-            with st.expander(f"📁 {rango_nombre} - Total: ${sub_tot:,.2f} MXN ({len(df_sub)} cuentas)", expanded=False):
-                df_sub_disp = df_sub[["Cliente", "Nombre_Vendedor", "Producto", "Fecha_Venta", "Total_Venta", "Total_Abono", "Saldo_Pendiente", "dias_antiguedad"]].copy()
-                df_sub_disp.columns = ["Cliente", "Vendedora", "Producto", "Fecha Venta", "Total Venta", "Abonado", "Deuda Pendiente", "Días Antigüedad"]
-                df_sub_disp["Total Venta"] = df_sub_disp["Total Venta"].map("${:,.2f}".format)
-                df_sub_disp["Abonado"] = df_sub_disp["Abonado"].map("${:,.2f}".format)
-                df_sub_disp["Deuda Pendiente"] = df_sub_disp["Deuda Pendiente"].map("${:,.2f}".format)
-                st.dataframe(df_sub_disp, use_container_width=True, hide_index=True)
+            with st.expander(f"📁 {rango_nombre} - Total Deuda: ${sub_tot:,.2f} MXN ({len(df_sub)} cuentas)", expanded=False):
+                for _, r_d in df_sub.iterrows():
+                    tot_v = float(r_d['Total_Venta'])
+                    ab_v = float(r_d['Total_Abono'])
+                    sal_v = float(r_d['Saldo_Pendiente'])
+                    pct_pagado = (ab_v / tot_v * 100) if tot_v > 0 else 0.0
+                    dias_ant = int(r_d['dias_antiguedad'])
+                    
+                    border_c = "#ef4444" if dias_ant > 60 else "#f97316" if dias_ant > 30 else "#eab308" if dias_ant > 15 else "#22c55e"
+                    
+                    st.markdown(f"""
+                    <div style='background-color: #ffffff; padding: 12px 16px; border-radius: 10px; border-left: 5px solid {border_c}; margin-bottom: 8px; border-top: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.03);'>
+                        <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;'>
+                            <div>
+                                <span style='font-size: 15px; font-weight: bold; color: #0f172a;'>👤 {r_d['Cliente']}</span>
+                                <span style='font-size: 12px; color: #64748b; margin-left: 8px;'>🧪 <b>{r_d['Producto']}</b></span>
+                            </div>
+                            <div style='font-size: 12px; color: #64748b;'>
+                                👩‍💼 Vendedora: <b>{r_d['Nombre_Vendedor']}</b> | 📅 Venta: {r_d.get('Fecha_Venta', '')} (<b>Hace {dias_ant} días</b>)
+                            </div>
+                        </div>
+                        <div style='margin-bottom: 8px;'>
+                            <div style='display: flex; justify-content: space-between; font-size: 11px; color: #475569; margin-bottom: 3px; font-weight: 600;'>
+                                <span>Progreso de Pago ({pct_pagado:.0f}% pagado)</span>
+                                <span>Abonado: ${ab_v:,.2f} de ${tot_v:,.2f}</span>
+                            </div>
+                            <div style='width: 100%; background-color: #fee2e2; border-radius: 10px; height: 8px; overflow: hidden;'>
+                                <div style='width: {pct_pagado:.1f}%; background-color: #22c55e; height: 100%; border-radius: 10px;'></div>
+                            </div>
+                        </div>
+                        <div style='display: flex; justify-content: space-between; align-items: center; background-color: #fafafa; padding: 6px 12px; border-radius: 6px; font-size: 12px;'>
+                            <div><span style='color: #64748b;'>Ticket Total:</span> <b>${tot_v:,.2f}</b></div>
+                            <div><span style='color: #166534;'>Cobrado:</span> <b style='color: #15803d;'>${ab_v:,.2f}</b></div>
+                            <div><span style='color: #991b1b;'>Resta por Cobrar:</span> <b style='color: #dc2626; font-size: 14px;'>${sal_v:,.2f} MXN</b></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
     else:
         st.success("✅ ¡Felicidades! No hay deudas pendientes en la cartera.")
 
