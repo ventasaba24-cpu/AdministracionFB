@@ -760,51 +760,51 @@ def show():
             
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # --- SECCIÓN: SEGMENTACIÓN DE MERCADO POR RANGO DE PRECIO Y MARGEN (5 GAMAS COMPLETAS) ---
-            st.markdown("<h4 style='color: #475569;'>🎯 Rendimiento por Gama de Precio y Margen Real</h4>", unsafe_allow_html=True)
-            st.caption(f"Análisis de rentabilidad y rotación de las **5 Gamas Completas** para **{etiqueta_periodo}**.")
+            # --- SECCIÓN: SEGMENTACIÓN DE MERCADO POR RANGO DE PRECIO DE VENTA ($) Y MARGEN (5 GAMAS) ---
+            st.markdown("<h4 style='color: #475569;'>🎯 Rendimiento y Margen Real por Rango de Precio de Venta</h4>", unsafe_allow_html=True)
+            st.caption(f"Análisis de rentabilidad y rotación de las **5 Gamas de Precio** para **{etiqueta_periodo}**.")
             
-            # Definición maestra de las 5 Gamas fijas del negocio
+            # Definición maestra de los 5 nuevos Rangos de Precio de Venta
             gamas_maestras = [
                 {
-                    "nombre": "2. Accesible / Perfumería Árabe Masiva",
-                    "rango": "($500 - $1,000 MXN)",
+                    "nombre": "1. Menos de $1,000 MXN",
+                    "rango": "(< $1,000 MXN)",
                     "icono": "🟢",
                     "border": "#22c55e",
                     "bg": "#f0fdf4",
-                    "func": lambda p: 500 <= p <= 1000
+                    "func": lambda p: p < 1000
                 },
                 {
-                    "nombre": "3. Gama Media / Diseñador Popular",
-                    "rango": "($1,000 - $1,800 MXN)",
+                    "nombre": "2. De $1,000 a $1,999 MXN",
+                    "rango": "($1,000 - $1,999 MXN)",
                     "icono": "🔵",
                     "border": "#3b82f6",
                     "bg": "#eff6ff",
-                    "func": lambda p: 1000 < p <= 1800
+                    "func": lambda p: 1000 <= p < 2000
                 },
                 {
-                    "nombre": "4. Gama Alta Diseñador",
-                    "rango": "($1,800 - $2,500 MXN)",
+                    "nombre": "3. De $2,000 a $2,999 MXN",
+                    "rango": "($2,000 - $2,999 MXN)",
                     "icono": "🟣",
                     "border": "#a855f7",
                     "bg": "#faf5ff",
-                    "func": lambda p: 1800 < p <= 2500
+                    "func": lambda p: 2000 <= p < 3000
                 },
                 {
-                    "nombre": "5. Nicho / Lujo / Gran Formato",
-                    "rango": "(> $2,500 MXN)",
+                    "nombre": "4. De $3,000 a $3,999 MXN",
+                    "rango": "($3,000 - $3,999 MXN)",
+                    "icono": "🟧",
+                    "border": "#f97316",
+                    "bg": "#fff7ed",
+                    "func": lambda p: 3000 <= p < 4000
+                },
+                {
+                    "nombre": "5. Más de $4,000 MXN",
+                    "rango": "(>= $4,000 MXN)",
                     "icono": "💎",
                     "border": "#06b6d4",
                     "bg": "#ecfeff",
-                    "func": lambda p: p > 2500
-                },
-                {
-                    "nombre": "1. Económicos / Varianza",
-                    "rango": "(< $500 MXN)",
-                    "icono": "🟡",
-                    "border": "#eab308",
-                    "bg": "#fefce8",
-                    "func": lambda p: p < 500
+                    "func": lambda p: p >= 4000
                 }
             ]
 
@@ -848,8 +848,8 @@ def show():
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Contenedor desplegable nativo con 1 clic para ver Top 5 Perfumes de esta Gama
-                with st.expander(f"👁️ Desplegar Top 5 Perfumes de {g_info['nombre']} ({pzs_g} vendidos en {etiqueta_periodo})", expanded=False):
+                # Contenedor desplegable nativo con 1 clic para ver Top 5 Perfumes por MARGEN DE GANANCIA (%)
+                with st.expander(f"👁️ Desplegar Top 5 Perfumes de Mayor Margen % en {g_info['nombre']} ({pzs_g} vendidos en {etiqueta_periodo})", expanded=False):
                     if not df_g_v.empty:
                         top_5_g = df_g_v.groupby("Producto").agg(
                             piezas=("Cantidad", "sum"),
@@ -859,7 +859,9 @@ def show():
 
                         top_5_g["margen_prod"] = np.where(top_5_g["ingreso"] > 0, (top_5_g["utilidad"] / top_5_g["ingreso"]) * 100, 0.0)
                         top_5_g["precio_prom"] = top_5_g["ingreso"] / top_5_g["piezas"]
-                        top_5_g = top_5_g.sort_values(by="piezas", ascending=False).head(5)
+                        
+                        # ORDENADO POR MAYOR MARGEN DE GANANCIA (%)
+                        top_5_g = top_5_g.sort_values(by="margen_prod", ascending=False).head(5)
 
                         for idx_t, r_t in enumerate(top_5_g.to_dict('records')):
                             p_num = idx_t + 1
@@ -868,16 +870,17 @@ def show():
                             <div style='background-color: #ffffff; padding: 8px 12px; border-radius: 6px; margin-bottom: 5px; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;'>
                                 <div>
                                     <span style='font-size: 13px; font-weight: bold; color: #1e293b;'>{med} {r_t['Producto']}</span>
-                                    <span style='font-size: 11px; color: #64748b; margin-left: 8px;'>({int(r_t['piezas'])} pzs | Precio Prom: ${r_t['precio_prom']:,.2f})</span>
+                                    <span style='font-size: 11px; color: #64748b; margin-left: 8px;'>(Total Vendidos: <b>{int(r_t['piezas'])} pzs</b> | Venta Prom: ${r_t['precio_prom']:,.2f})</span>
                                 </div>
                                 <div style='font-size: 12px;'>
                                     <span style='color: #475569; margin-right: 10px;'>Ingreso: <b>${r_t['ingreso']:,.2f}</b></span>
-                                    <span style='color: #166534; font-weight: 700;'>Ganancia: ${r_t['utilidad']:,.2f} ({r_t['margen_prod']:.1f}%)</span>
+                                    <span style='color: #166534; font-weight: 700;'>Ganancia Neta: ${r_t['utilidad']:,.2f} ({r_t['margen_prod']:.1f}% Margen)</span>
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
                     else:
                         st.info(f"ℹ️ No se registraron ventas en la gama {g_info['nombre']} durante {etiqueta_periodo}.")
+
 
             st.markdown("<br>", unsafe_allow_html=True)
 
