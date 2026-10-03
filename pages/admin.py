@@ -24,9 +24,10 @@ def generar_pdf_inventario(df_inventario, nombre_vendedor):
             
             self.set_font("Arial", "B", 11)
             self.set_fill_color(200, 220, 255)
-            self.cell(100, 10, "Producto", border=1, fill=True)
-            self.cell(45, 10, "Precio Unitario", border=1, align="C", fill=True)
-            self.cell(45, 10, "Inventario", border=1, align="C", fill=True)
+            self.cell(75, 10, "Producto", border=1, fill=True)
+            self.cell(40, 10, "Fecha Reg.", border=1, align="C", fill=True)
+            self.cell(38, 10, "Precio Unitario", border=1, align="C", fill=True)
+            self.cell(37, 10, "Inventario", border=1, align="C", fill=True)
             self.ln()
 
         def footer(self):
@@ -44,16 +45,26 @@ def generar_pdf_inventario(df_inventario, nombre_vendedor):
         df_activos = df_activos.sort_values(by="nombre")
         
         for _, row in df_activos.iterrows():
-            nombre = str(row['nombre'])[:50]
+            nombre = str(row['nombre'])[:40]
             precio = float(row['precio'])
             stock = int(row['stock'])
+            
+            fecha_raw = row.get('fecha_ingreso')
+            if pd.notnull(fecha_raw):
+                try:
+                    fecha_str = pd.to_datetime(fecha_raw).strftime("%d/%m/%Y")
+                except Exception:
+                    fecha_str = str(fecha_raw)[:10]
+            else:
+                fecha_str = "N/A"
             
             # Limpiar caracteres raros que rompen fpdf
             nombre_ascii = nombre.encode('latin-1', 'replace').decode('latin-1')
             
-            pdf.cell(100, 8, nombre_ascii, border=1)
-            pdf.cell(45, 8, f"${precio:,.2f}", border=1, align="R")
-            pdf.cell(45, 8, str(stock), border=1, align="C")
+            pdf.cell(75, 8, nombre_ascii, border=1)
+            pdf.cell(40, 8, fecha_str, border=1, align="C")
+            pdf.cell(38, 8, f"${precio:,.2f}", border=1, align="R")
+            pdf.cell(37, 8, str(stock), border=1, align="C")
             pdf.ln()
             
     return bytes(pdf.output())
