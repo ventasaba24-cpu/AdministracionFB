@@ -1714,14 +1714,23 @@ def show():
             agrupado_ventas["Rotacion_Semanal"] = (agrupado_ventas["Unidades_Vendidas"] / num_dias) * 7.0
             
             df_inv_global = db.leer_inventario()
-            stock_agrupado = pd.DataFrame(columns=["nombre", "stock", "costo_compra"])
+            stock_agrupado = pd.DataFrame(columns=["nombre", "stock", "costo_compra", "fecha_ingreso", "dias_en_tienda"])
             if not df_inv_global.empty:
                 df_inv_global["stock"] = pd.to_numeric(df_inv_global["stock"], errors="coerce").fillna(0)
                 df_inv_global["costo_compra"] = pd.to_numeric(df_inv_global["costo_compra"], errors="coerce").fillna(0.0)
+                if "fecha_ingreso" in df_inv_global.columns:
+                    df_inv_global["fecha_ingreso_dt"] = pd.to_datetime(df_inv_global["fecha_ingreso"], errors="coerce")
+                else:
+                    df_inv_global["fecha_ingreso_dt"] = pd.NaT
+
                 stock_agrupado = df_inv_global.groupby("nombre").agg(
                     stock=("stock", "sum"),
-                    costo_compra=("costo_compra", "mean")
+                    costo_compra=("costo_compra", "mean"),
+                    fecha_ingreso=("fecha_ingreso_dt", "max")
                 ).reset_index()
+
+                hoy_dt = pd.to_datetime(fecha_hoy)
+                stock_agrupado["dias_en_tienda"] = (hoy_dt - stock_agrupado["fecha_ingreso"]).dt.days.fillna(999).astype(int)
             
             df_inteligencia = pd.merge(stock_agrupado, agrupado_ventas, left_on="nombre", right_on="Producto", how="outer")
             df_inteligencia["Producto"] = df_inteligencia["nombre"].fillna(df_inteligencia["Producto"])
@@ -1730,50 +1739,97 @@ def show():
             df_inteligencia["stock"] = df_inteligencia["stock"].fillna(0).astype(int)
             df_inteligencia["costo_compra"] = df_inteligencia["costo_compra"].fillna(0.0)
             df_inteligencia["Utilidad_Generada"] = df_inteligencia["Utilidad_Generada"].fillna(0.0)
+            df_inteligencia["dias_en_tienda"] = df_inteligencia["dias_en_tienda"].fillna(999).astype(int)
+
+            # Métricas Avanzadas: Semanas de Cobertura (Weeks of Supply) y Sell-Through %
+            df_inteligencia["cobertura_semanas"] = np.where(
+                df_inteligencia["Rotacion_Semanal"] > 0,
+                df_inteligencia["stock"] / df_inteligencia["Rotacion_Semanal"],
+                999.0
+            )
+
+            total_disponible = df_inteligencia["stock"] + df_inteligencia["Unidades_Vendidas"]
+            df_inteligencia["sell_through"] = np.where(
+                total_disponible > 0,
+                (df_inteligencia["Unidades_Vendidas"] / total_disponible) * 100.0,
+                0.0
+            )
+
+            # Reorden inteligente sugerido (cubrir 4 semanas de venta promedio)
+            df_inteligencia["reorden_sugerido"] = np.ceil(
+                (df_inteligencia["Rotacion_Semanal"] * 4.0) - df_inteligencia["stock"]
+            ).clip(lower=1).astype(int)
+
+            # 1. Novedades / En Vitrina (<= 21 días en catálogo y 0 ventas)
+            cond_novedades = (df_inteligencia["stock"] > 0) & (df_inteligencia["dias_en_tienda"] <= 21) & (df_inteligencia["Unidades_Vendidas"] == 0)
+            novedades = df_inteligencia[cond_novedades].sort_values(by="dias_en_tienda", ascending=True).copy()
+
+            # 2. Alertas Quiebre (Stock <= 1 o cobertura < 1.5 semanas)
+            cond_quiebre = (
+                ((df_inteligencia["cobertura_semanas"] < 1.5) & (df_inteligencia["Rotacion_Semanal"] >= 0.5)) |
+                ((df_inteligencia["stock"] <= 1) & (df_inteligencia["Unidades_Vendidas"] > 0))
+            )
+            alertas_quiebre = df_inteligencia[cond_quiebre].sort_values(by=["stock", "Rotacion_Semanal"], ascending=[True, False]).copy()
+
+            # 3. Alta Rotación (Velocidad >= 1.0 pz/sem o Sell-Through >= 40% con al menos 2 ventas)
+            cond_alta = (
+                (df_inteligencia["Rotacion_Semanal"] >= 1.0) |
+                ((df_inteligencia["sell_through"] >= 40.0) & (df_inteligencia["Unidades_Vendidas"] >= 2))
+            )
+            top_rotacion = df_inteligencia[cond_alta].sort_values(by="Rotacion_Semanal", ascending=False).copy()
+
+            # 4. Inventario Lento / Estancado (> 30 días sin ventas o cobertura > 10 semanas)
+            cond_lentos = (
+                (df_inteligencia["stock"] > 0) &
+                (~cond_novedades) &
+                (
+                    ((df_inteligencia["dias_en_tienda"] > 30) & (df_inteligencia["Unidades_Vendidas"] == 0)) |
+                    ((df_inteligencia["cobertura_semanas"] > 10.0) & (df_inteligencia["stock"] >= 2) & (df_inteligencia["Rotacion_Semanal"] < 0.3))
+                )
+            )
+            lentos = df_inteligencia[cond_lentos].sort_values(by="stock", ascending=False).copy()
             
-            top_rotacion = df_inteligencia[df_inteligencia["Rotacion_Semanal"] > 0].sort_values(by="Rotacion_Semanal", ascending=False).copy()
-            alertas_quiebre = df_inteligencia[(df_inteligencia["Rotacion_Semanal"] >= 0.3) & (df_inteligencia["stock"] <= 1)].sort_values(by="Rotacion_Semanal", ascending=False).copy()
-            lentos = df_inteligencia[(df_inteligencia["stock"] > 0) & (df_inteligencia["Rotacion_Semanal"] < 0.2)].sort_values(by="stock", ascending=False).copy()
-            
-            c1, c2, c3 = st.columns(3)
+            c1, c2, c3, c4 = st.columns(4)
             with c1:
-                st.markdown(f"##### 🌪️ Alta Rotación ({len(top_rotacion)} perfumes)")
+                st.markdown(f"##### 🌪️ Alta Rotación ({len(top_rotacion)})")
                 if not top_rotacion.empty:
                     html_rot = "<div style='max-height: 380px; overflow-y: auto; padding-right: 4px;'>"
                     for _, r in top_rotacion.iterrows():
                         html_rot += (
-                            f"<div style='background-color: #f0fdf4; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #16a34a; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>"
+                            f"<div style='background-color: #f0fdf4; padding: 10px 12px; border-radius: 8px; border-left: 4px solid #16a34a; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>"
                             f"<div style='font-size: 13px; font-weight: bold; color: #14532d; margin-bottom: 3px;'>{r['Producto']}</div>"
                             f"<div style='font-size: 11px; color: #166534; display: flex; justify-content: space-between;'>"
                             f"<span>{etiqueta_rango}: <b>{int(r['Unidades_Vendidas'])} pzs</b></span>"
                             f"<span>Stock: <b>{int(r['stock'])} pzs</b></span>"
                             f"</div>"
                             f"<div style='font-size: 11px; color: #15803d; margin-top: 3px; font-weight: bold; border-top: 1px dashed #bbf7d0; padding-top: 3px;'>"
-                            f"⚡ Velocidad: {r['Rotacion_Semanal']:.1f}/sem | Ganancia: +${r['Utilidad_Generada']:,.2f}"
+                            f"⚡ Ritmo: {r['Rotacion_Semanal']:.1f}/sem | +${r['Utilidad_Generada']:,.2f}"
                             f"</div>"
                             f"</div>"
                         )
                     html_rot += "</div>"
                     st.markdown(html_rot, unsafe_allow_html=True)
                 else:
-                    st.info(f"No hay ventas registradas en {etiqueta_rango}.")
+                    st.info(f"Sin estrellas en {etiqueta_rango}.")
                     
             with c2:
-                st.markdown(f"##### 🚨 Alertas Quiebre ({len(alertas_quiebre)} en riesgo)")
+                st.markdown(f"##### 🚨 Quiebre ({len(alertas_quiebre)})")
                 if not alertas_quiebre.empty:
                     html_q = "<div style='max-height: 380px; overflow-y: auto; padding-right: 4px;'>"
                     for _, r in alertas_quiebre.iterrows():
-                        est_pedido = 3 * r['costo_compra'] if r['costo_compra'] > 0 else 0.0
-                        ped_txt = f" (Pedir 3 pzs: ~${est_pedido:,.2f})" if est_pedido > 0 else ""
+                        pzs_pedir = int(r['reorden_sugerido'])
+                        est_pedido = pzs_pedir * r['costo_compra'] if r['costo_compra'] > 0 else 0.0
+                        ped_txt = f" (~${est_pedido:,.2f})" if est_pedido > 0 else ""
+                        cob_txt = f"{r['cobertura_semanas']:.1f} sem" if r['cobertura_semanas'] < 900 else "Agotándose"
                         html_q += (
-                            f"<div style='background-color: #fff1f2; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #f43f5e; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>"
+                            f"<div style='background-color: #fff1f2; padding: 10px 12px; border-radius: 8px; border-left: 4px solid #f43f5e; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>"
                             f"<div style='font-size: 13px; font-weight: bold; color: #9f1239; margin-bottom: 3px;'>{r['Producto']}</div>"
                             f"<div style='font-size: 11px; color: #be123c; display: flex; justify-content: space-between;'>"
-                            f"<span>Stock Crítico: <b style='color: #dc2626;'>{int(r['stock'])} pzs</b></span>"
-                            f"<span>Rota: <b>{r['Rotacion_Semanal']:.1f}/sem</b></span>"
+                            f"<span>Stock: <b style='color: #dc2626;'>{int(r['stock'])} pzs</b></span>"
+                            f"<span>Cob: <b>{cob_txt}</b></span>"
                             f"</div>"
                             f"<div style='font-size: 11px; color: #991b1b; margin-top: 3px; font-weight: bold; border-top: 1px dashed #fecdd3; padding-top: 3px;'>"
-                            f"⚠️ Surtido Sugerido: 3 pzs{ped_txt}"
+                            f"⚠️ Pedir: {pzs_pedir} pzs{ped_txt}"
                             f"</div>"
                             f"</div>"
                         )
@@ -1781,23 +1837,47 @@ def show():
                     st.markdown(html_q, unsafe_allow_html=True)
                 else:
                     st.success("✅ Todo tu stock está sano.")
-                    
+
             with c3:
-                st.markdown(f"##### 🐢 Inventario Lento ({len(lentos)} estancados)")
+                st.markdown(f"##### ✨ Novedades ({len(novedades)})")
+                if not novedades.empty:
+                    html_nov = "<div style='max-height: 380px; overflow-y: auto; padding-right: 4px;'>"
+                    for _, r in novedades.iterrows():
+                        dias_txt = f"{r['dias_en_tienda']}d en tienda" if r['dias_en_tienda'] < 900 else "Nuevo"
+                        html_nov += (
+                            f"<div style='background-color: #f0f9ff; padding: 10px 12px; border-radius: 8px; border-left: 4px solid #0284c7; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>"
+                            f"<div style='font-size: 13px; font-weight: bold; color: #075985; margin-bottom: 3px;'>{r['Producto']}</div>"
+                            f"<div style='font-size: 11px; color: #0369a1; display: flex; justify-content: space-between;'>"
+                            f"<span>Stock: <b>{int(r['stock'])} pzs</b></span>"
+                            f"<span><b>{dias_txt}</b></span>"
+                            f"</div>"
+                            f"<div style='font-size: 11px; color: #0284c7; margin-top: 3px; font-weight: bold; border-top: 1px dashed #bae6fd; padding-top: 3px;'>"
+                            f"✨ En fase de prueba / vitrina"
+                            f"</div>"
+                            f"</div>"
+                        )
+                    html_nov += "</div>"
+                    st.markdown(html_nov, unsafe_allow_html=True)
+                else:
+                    st.info("Sin novedades pendientes.")
+                    
+            with c4:
+                st.markdown(f"##### 🐢 Inv. Lento ({len(lentos)})")
                 if not lentos.empty:
                     html_l = "<div style='max-height: 380px; overflow-y: auto; padding-right: 4px;'>"
                     for _, r in lentos.iterrows():
                         cap_t = r['stock'] * r['costo_compra']
                         cap_txt = f" | Capital: ${cap_t:,.2f}" if cap_t > 0 else ""
+                        dias_str = f" ({r['dias_en_tienda']}d)" if r['dias_en_tienda'] < 900 else ""
                         html_l += (
-                            f"<div style='background-color: #fffbe6; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #f59e0b; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>"
+                            f"<div style='background-color: #fffbe6; padding: 10px 12px; border-radius: 8px; border-left: 4px solid #f59e0b; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>"
                             f"<div style='font-size: 13px; font-weight: bold; color: #78350f; margin-bottom: 3px;'>{r['Producto']}</div>"
                             f"<div style='font-size: 11px; color: #92400e; display: flex; justify-content: space-between;'>"
                             f"<span>Estancado: <b>{int(r['stock'])} pzs</b></span>"
                             f"<span>Rota: <b>{r['Rotacion_Semanal']:.2f}/sem</b></span>"
                             f"</div>"
                             f"<div style='font-size: 11px; color: #b45309; margin-top: 3px; font-weight: bold; border-top: 1px dashed #fef08a; padding-top: 3px;'>"
-                            f"💡 Atrapado: {int(r['stock'])} pzs{cap_txt}"
+                            f"💡 Atrapado{dias_str}:{cap_txt}"
                             f"</div>"
                             f"</div>"
                         )
