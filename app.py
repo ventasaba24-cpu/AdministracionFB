@@ -89,8 +89,8 @@ def main():
     if st.session_state.user_role == "Admin":
         st.sidebar.success("Modo Administrador Activo")
         page_names_to_funcs = {
-            "🏠 Dashboard Vendedor": run_vendedor_page,
-            "📊 Panel de Administración": run_admin_page
+            "📊 Panel de Administración": run_admin_page,
+            "🏠 Dashboard Vendedor": run_vendedor_page
         }
     elif st.session_state.user_role == "Vendedor":
         st.sidebar.info("Modo Vendedor Activo")
