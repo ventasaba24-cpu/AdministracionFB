@@ -618,121 +618,93 @@ class DatabaseHandler:
     def obtener_tabla_ventas_completa(self):
         """
         Calcula dinámicamente el DataFrame enlazando Ventas + Abonos y generando Estados.
-        (Optimizado para evitar el problema de N+1 queries en la Nube)
+        (Optimizado para evitar el problema de N+1 queries en la Nube - Modelo Venta Directa)
         """
         session = self.get_session()
         try:
-             from sqlalchemy.orm import joinedload
-             # Traemos ventas con sus abonos en UNA sola ida (eager loading)
-             ventas = session.query(Venta).options(joinedload(Venta.abonos)).all()
-             # Traemos todos los usuarios en UNA sola ida para el diccionario
-             usuarios = session.query(Usuario).all()
-             user_dict = {u.email: u for u in usuarios}
-             
-             # Diccionario rápido de productos para sacar su proveedor
-             productos = session.query(Producto).all()
-             prod_dict = {(p.nombre, p.vendedor_email): p for p in productos}
-             
-             datos_procesados = []
-             
-             for v in ventas:
-                 # Ya no hay query aquí, usamos la data ya en memoria
-                 abonos_query = v.abonos
-                 total_abonos = sum([a.monto_abono for a in abonos_query])
-                 
-                 # Dias ultimo abono
-                 dias_ultimo = None
-                 if abonos_query:
-                     # Sacar el mas reciente
-                     fechas_abono = [a.fecha_abono for a in abonos_query if a.fecha_abono]
-                     if fechas_abono:
-                         ultimo = max(fechas_abono)
-                         diferencia = get_mexico_time() - ultimo
-                         dias_ultimo = diferencia.days
-                 
-                 # Si no tiene abono, usar fecha de inicio de venta
-                 if dias_ultimo is None:
-                     if v.fecha_venta:
-                         dias_ultimo = (get_mexico_time() - v.fecha_venta).days
-                     else:
-                         dias_ultimo = 0
-                 
-                 saldo = v.monto_total - total_abonos
-                 estado = "Pagado" if saldo <= 0 else "Adeudo"
-                 
-                 # Busqueda súper rápida en memoria
-                 vendedor = user_dict.get(v.vendedor_email)
-                 tasa = vendedor.tasa_comision if vendedor else 0.10
-                 nombre_vendedor = vendedor.nombre if vendedor else "Desconocido"
-                 
-                 prod = prod_dict.get((v.producto_nombre, v.vendedor_email))
-                 nombre_proveedor = prod.proveedor if prod and prod.proveedor else "Desconocido"
-                 
-                 # Si está pagado
-                 comision_ganada = v.monto_total * tasa
-                 comision_pagada = "SI" if estado == "Pagado" else "NO"
-                 
-                 # RASTREADOR MLM O(1) (Penalización oculta de 5%, 3%, 2%)
-                 comision_red = 0.0
-                 comision_red_l1 = 0.0
-                 comision_red_l2 = 0.0
-                 comision_red_l3 = 0.0
-                 niveles_red_activos = 0
-                 
-                 if vendedor:
-                     p1 = vendedor.patrocinador_email
-                     if p1 and p1 != "Admin" and p1 != v.vendedor_email:
-                         comision_red_l1 = v.monto_total * 0.05
-                         comision_red += comision_red_l1
-                         niveles_red_activos += 1
-                         user_p1 = user_dict.get(p1)
-                         
-                         if user_p1:
-                             p2 = user_p1.patrocinador_email
-                             if p2 and p2 != "Admin" and p2 != p1:
-                                 comision_red_l2 = v.monto_total * 0.03
-                                 comision_red += comision_red_l2
-                                 niveles_red_activos += 1
-                                 user_p2 = user_dict.get(p2)
-                                 
-                                 if user_p2:
-                                     p3 = user_p2.patrocinador_email
-                                     if p3 and p3 != "Admin" and p3 != p2:
-                                         comision_red_l3 = v.monto_total * 0.02
-                                         comision_red += comision_red_l3
-                                         niveles_red_activos += 1
-                 
-                 # === METRICAS FINANCIERAS NETAS ===
-                 iva_generado = v.monto_total * 0.16
-                 costo_bases = getattr(v, "costo_historico", 0.0) # Asegurando compatibilidad con DBs previas
-                 utilidad_neta = v.monto_total - iva_generado - costo_bases - comision_ganada
-                 
-                 fila = {
-                     "ID_Venta": v.id,
-                     "Fecha_Venta": v.fecha_venta.strftime("%d-%b-%Y") if v.fecha_venta else "",
-                     "Dias_Ultimo_Abono": dias_ultimo,
-                     "Nombre_Vendedor": nombre_vendedor,
-                     "Vendedor_Email": v.vendedor_email,
-                     "Cliente": v.cliente,
-                     "Producto": v.producto_nombre,
-                     "Cantidad": getattr(v, "cantidad", 1),
-                     "Proveedor": nombre_proveedor,
-                     "Total_Venta": v.monto_total,
-                     "IVA_(16%)": iva_generado,
-                     "Costo_Producto": costo_bases,
-                     "Total_Abono": total_abonos,
-                     "Saldo_Pendiente": saldo,
-                     "Estado_Venta": estado,
-                     "Comision_Generada": comision_ganada,
-                     "Utilidad_Neta": utilidad_neta,
-                     "Comision_Pagada": comision_pagada, # Concepto teórico de si ya superó el Adeudo
-                     "Comision_Fisicamente_Cobrada": v.comision_cobrada,
-                     "Fecha_Cobro_Comision": v.fecha_cobro_comision.strftime("%d-%b-%Y") if hasattr(v, "fecha_cobro_comision") and v.fecha_cobro_comision else ""
-                 }
-                 datos_procesados.append(fila)
-                 
-             return pd.DataFrame(datos_procesados)
-
+            from sqlalchemy.orm import joinedload
+            # Traemos ventas con sus abonos en UNA sola ida (eager loading)
+            ventas = session.query(Venta).options(joinedload(Venta.abonos)).all()
+            # Traemos todos los usuarios en UNA sola ida para el diccionario
+            usuarios = session.query(Usuario).all()
+            user_dict = {u.email: u for u in usuarios}
+            
+            # Diccionario rápido de productos para sacar su proveedor
+            productos = session.query(Producto).all()
+            prod_dict = {(p.nombre, p.vendedor_email): p for p in productos}
+            
+            datos_procesados = []
+            
+            for v in ventas:
+                abonos_query = v.abonos
+                total_abonos = sum([a.monto_abono for a in abonos_query]) if abonos_query else 0.0
+                
+                # Días desde el último abono
+                dias_ultimo = None
+                if abonos_query:
+                    fechas_abono = [a.fecha_abono for a in abonos_query if a.fecha_abono]
+                    if fechas_abono:
+                        ultimo = max(fechas_abono)
+                        diferencia = get_mexico_time() - ultimo
+                        dias_ultimo = diferencia.days
+                
+                if dias_ultimo is None:
+                    if v.fecha_venta:
+                        dias_ultimo = (get_mexico_time() - v.fecha_venta).days
+                    else:
+                        dias_ultimo = 0
+                
+                saldo = v.monto_total - total_abonos
+                estado = "Pagado" if saldo <= 0 else "Adeudo"
+                
+                # Búsqueda de datos del vendedor
+                vendedor = user_dict.get(v.vendedor_email)
+                tasa = vendedor.tasa_comision if vendedor else 0.10
+                nombre_vendedor = vendedor.nombre if vendedor else "Desconocido"
+                
+                prod = prod_dict.get((v.producto_nombre, v.vendedor_email))
+                nombre_proveedor = prod.proveedor if prod and prod.proveedor else "Desconocido"
+                
+                # Comisión directa del vendedor
+                comision_ganada = v.monto_total * tasa
+                comision_pagada = "SI" if estado == "Pagado" else "NO"
+                
+                # === MÉTRICAS FINANCIERAS NETAS (VENTA DIRECTA) ===
+                # Desglose fiscal exacto de IVA incluido (16%)
+                subtotal_sin_iva = v.monto_total / 1.16
+                iva_generado = v.monto_total - subtotal_sin_iva
+                
+                costo_unit = getattr(v, "costo_historico", 0.0) or 0.0
+                cant = getattr(v, "cantidad", 1) or 1
+                costo_bases = costo_unit * cant
+                
+                utilidad_neta = subtotal_sin_iva - costo_bases - comision_ganada
+                
+                fila = {
+                    "ID_Venta": v.id,
+                    "Fecha_Venta": v.fecha_venta.strftime("%d-%b-%Y") if v.fecha_venta else "",
+                    "Dias_Ultimo_Abono": dias_ultimo,
+                    "Nombre_Vendedor": nombre_vendedor,
+                    "Vendedor_Email": v.vendedor_email,
+                    "Cliente": v.cliente,
+                    "Producto": v.producto_nombre,
+                    "Cantidad": cant,
+                    "Proveedor": nombre_proveedor,
+                    "Total_Venta": v.monto_total,
+                    "IVA_(16%)": iva_generado,
+                    "Costo_Producto": costo_bases,
+                    "Total_Abono": total_abonos,
+                    "Saldo_Pendiente": saldo,
+                    "Estado_Venta": estado,
+                    "Comision_Generada": comision_ganada,
+                    "Utilidad_Neta": utilidad_neta,
+                    "Comision_Pagada": comision_pagada,
+                    "Comision_Fisicamente_Cobrada": v.comision_cobrada,
+                    "Fecha_Cobro_Comision": v.fecha_cobro_comision.strftime("%d-%b-%Y") if hasattr(v, "fecha_cobro_comision") and v.fecha_cobro_comision else ""
+                }
+                datos_procesados.append(fila)
+                
+            return pd.DataFrame(datos_procesados)
         finally:
             session.close()
 
