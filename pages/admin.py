@@ -889,7 +889,7 @@ def show():
         "✉️ Vendedores", 
         "📝 Correcciones", 
         "📉 Gastos y Egresos", 
-        "🔍 Ventas Cerradas", 
+        "🛍️ Ventas", 
         "🎭 Simular Usuario"
     ])
 
@@ -2626,76 +2626,179 @@ def show():
                 st.info("Aún no tienes gastos registrados.")
 
     with tab9:
-        st.subheader("🔍 Buscador de Ventas Cerradas (Pagadas al 100%)")
-        st.markdown("Encuentra rápidamente el historial de cualquier venta liquidada buscando por cliente, vendedor o producto.")
+        st.subheader("🛍️ Buscador y Gestión de Ventas")
+        st.markdown("Consulta y busca el historial de **ventas activas con saldo** o **ventas cerradas y liquidadas al 100%**.")
         
-        # Filtramos para tener SOLO ventas cerradas
-        df_cerradas = df_todas[df_todas["Estado_Venta"] == "Pagado"].copy()
+        # Segmentado de Tipo de Ventas y Buscador
+        col_filtro1, col_filtro2 = st.columns([3, 3])
+        with col_filtro1:
+            tipo_vista_ventas = st.radio(
+                "Filtrar por estado de venta:",
+                ["🟢 Ventas Activas (Con Saldo)", "✅ Ventas Cerradas (Liquidadas)", "📋 Todas las Ventas"],
+                horizontal=True,
+                key="radio_tipo_vista_ventas"
+            )
+        with col_filtro2:
+            busqueda_ventas = st.text_input(
+                "🔍 Buscar venta:", 
+                placeholder="Ej. Lupita Ramos, ARI Ariana Grande, Ana Paula, Folio...", 
+                key="search_admin_ventas"
+            )
         
-        busqueda = st.text_input("🔍 Buscar:", placeholder="Ej. Alma, Bersace, Juan Pérez...", key="search_admin_cerradas")
-        
-        if not df_cerradas.empty:
-            if busqueda:
-                # Filtrar con vectorización ignorando case
-                mask = (
-                    df_cerradas["Cliente"].str.contains(busqueda, case=False, na=False) |
-                    df_cerradas["Nombre_Vendedor"].str.contains(busqueda, case=False, na=False) |
-                    df_cerradas["Producto"].str.contains(busqueda, case=False, na=False)
-                )
-                df_mostrar = df_cerradas[mask]
+        if not df_todas.empty:
+            df_v_base = df_todas.copy()
+            df_v_base["Fecha_Dt"] = pd.to_datetime(df_v_base["Fecha_Venta"], errors="coerce")
+            
+            # Pre-indexar abonos en un mapa en memoria O(1) para máxima velocidad
+            abonos_map = {}
+            if not df_abonos_global.empty:
+                for _, ab in df_abonos_global.iterrows():
+                    v_id = ab.get("venta_id")
+                    if v_id not in abonos_map:
+                        abonos_map[v_id] = []
+                    abonos_map[v_id].append(ab)
+            
+            # Filtrar por tipo seleccionado
+            if tipo_vista_ventas.startswith("🟢"):
+                df_filtradas = df_v_base[df_v_base["Estado_Venta"] != "Pagado"].copy()
+                # Ordenar de más reciente a más antigua
+                df_filtradas = df_filtradas.sort_values(by="Fecha_Dt", ascending=False)
+            elif tipo_vista_ventas.startswith("✅"):
+                df_filtradas = df_v_base[df_v_base["Estado_Venta"] == "Pagado"].copy()
+                # Ordenar de más reciente a más antigua
+                df_filtradas = df_filtradas.sort_values(by="Fecha_Dt", ascending=False)
             else:
-                # Si no hay búsqueda, mostrar las últimas 50
-                df_mostrar = df_cerradas.tail(50).iloc[::-1]  # Invertir para ver más recientes arriba
+                df_filtradas = df_v_base.sort_values(by="Fecha_Dt", ascending=False).copy()
+            
+            # Filtrar por texto de búsqueda en tiempo real
+            if busqueda_ventas.strip():
+                b_str = busqueda_ventas.strip().lower()
+                search_corpus = (
+                    df_filtradas["Cliente"].fillna("").astype(str) + " " +
+                    df_filtradas["Nombre_Vendedor"].fillna("").astype(str) + " " +
+                    df_filtradas["Producto"].fillna("").astype(str) + " " +
+                    df_filtradas["ID_Venta"].fillna("").astype(str)
+                ).str.lower()
+                df_mostrar = df_filtradas[search_corpus.str.contains(b_str, regex=False, na=False)]
+            else:
+                df_mostrar = df_filtradas
             
             st.markdown("---")
+            
             if df_mostrar.empty:
-                st.warning("No se encontraron ventas cerradas con esa búsqueda.")
+                st.warning("No se encontraron ventas con los filtros aplicados.")
             else:
-                st.caption(f"Mostrando {len(df_mostrar)} resultados.")
-                for _, r in df_mostrar.iterrows():
-                    abonos_venta = df_abonos_global[df_abonos_global["venta_id"] == r["ID_Venta"]]
+                # Resumen rápido de métricas
+                total_mostradas = len(df_mostrar)
+                suma_total = df_mostrar["Total_Venta"].sum()
+                suma_abonos = df_mostrar["Total_Abono"].sum()
+                suma_saldo = df_mostrar["Saldo_Pendiente"].sum()
+                
+                # Mini banner de indicadores
+                mb1, mb2, mb3, mb4 = st.columns(4)
+                with mb1:
+                    st.metric("Ventas Encontradas", f"{total_mostradas} pzs")
+                with mb2:
+                    st.metric("Monto Total Venta", f"${suma_total:,.2f}")
+                with mb3:
+                    st.metric("Total Cobrado", f"${suma_abonos:,.2f}")
+                with mb4:
+                    if tipo_vista_ventas.startswith("🟢"):
+                        st.metric("Saldo Por Cobrar", f"${suma_saldo:,.2f}", delta=f"-${suma_saldo:,.2f}", delta_color="inverse")
+                    else:
+                        st.metric("Saldo Por Cobrar", f"${suma_saldo:,.2f}")
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # Paginación inteligente para que el scroll sea instantáneo
+                LIMITE_PAGINA = 40
+                if total_mostradas > LIMITE_PAGINA:
+                    num_paginas = int(np.ceil(total_mostradas / LIMITE_PAGINA))
+                    col_p1, col_p2 = st.columns([3, 1])
+                    with col_p1:
+                        st.caption(f"Mostrando {total_mostradas} ventas ordenadas por fecha (más reciente al inicio).")
+                    with col_p2:
+                        pagina_sel = st.selectbox("Página:", list(range(1, num_paginas + 1)), key="pag_ventas_admin_sel")
                     
-                    # Calcular fecha de cierre
-                    fecha_cierre_str = "Desconocida"
-                    if not abonos_venta.empty:
-                        # Asegurar formato datetime y tomar el mayor (el último abono)
-                        fechas_validas = pd.to_datetime(abonos_venta['fecha_abono'], errors='coerce').dropna()
-                        if not fechas_validas.empty:
-                            max_fecha = fechas_validas.max()
-                            # Ajuste horario a México
-                            max_fecha_local = max_fecha
-                            meses = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
-                            fecha_cierre_str = f"{max_fecha_local.day} {meses[max_fecha_local.month]} {max_fecha_local.year}"
-
-                    st.markdown(f"""
-<div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-    <div style="font-size: 16px; color: #1e293b; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;">
-        <span>👤 <b>{r['Cliente']}</b></span>
-        <span style="font-size: 13px; color: #64748b; font-weight: normal; background-color: #e2e8f0; padding: 2px 8px; border-radius: 12px;">Cerrada: {fecha_cierre_str}</span>
+                    idx_ini = (pagina_sel - 1) * LIMITE_PAGINA
+                    idx_fin = idx_ini + LIMITE_PAGINA
+                    df_render = df_mostrar.iloc[idx_ini:idx_fin]
+                else:
+                    st.caption(f"Mostrando {total_mostradas} ventas ordenadas por fecha (más reciente al inicio).")
+                    df_render = df_mostrar
+                
+                meses_dict = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
+                
+                for _, r in df_render.iterrows():
+                    v_id = r["ID_Venta"]
+                    abonos_lista = abonos_map.get(v_id, [])
+                    
+                    # Formatear fecha de creación
+                    fecha_v_str = "Fecha Desconocida"
+                    if pd.notnull(r["Fecha_Venta"]):
+                        try:
+                            dt_v = pd.to_datetime(r["Fecha_Venta"])
+                            fecha_v_str = f"{dt_v.day} {meses_dict.get(dt_v.month, '')} {dt_v.year}"
+                        except:
+                            fecha_v_str = str(r["Fecha_Venta"])[:10]
+                    
+                    es_pagado = (r["Estado_Venta"] == "Pagado")
+                    
+                    if es_pagado:
+                        # Fecha de cierre / último abono
+                        fecha_cierre_str = fecha_v_str
+                        if abonos_lista:
+                            fechas_validas = [pd.to_datetime(ab['fecha_abono'], errors='coerce') for ab in abonos_lista if pd.notnull(ab.get('fecha_abono'))]
+                            fechas_validas = [f for f in fechas_validas if pd.notnull(f)]
+                            if fechas_validas:
+                                max_f = max(fechas_validas)
+                                fecha_cierre_str = f"{max_f.day} {meses_dict.get(max_f.month, '')} {max_f.year}"
+                                
+                        st.markdown(f"""
+<div style="background-color: #f8fafc; padding: 14px 18px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+    <div style="font-size: 15px; color: #1e293b; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+        <span>👤 <b>{r['Cliente']}</b> <span style="font-size: 11px; color: #64748b;">(Folio #{r['ID_Venta']})</span></span>
+        <span style="font-size: 12px; color: #047857; font-weight: 600; background-color: #d1fae5; padding: 2px 10px; border-radius: 12px;">✅ Cerrada: {fecha_cierre_str}</span>
     </div>
-    <div style="font-size: 14px; color: #334155; margin-bottom: 8px;">🏷️ {r['Producto']} (Vendedor: {r['Nombre_Vendedor']})</div>
-    <div style="font-size: 15px; font-weight: bold; color: #10b981;">Total Abonado: ${r['Total_Abono']:,.2f}</div>
+    <div style="font-size: 13px; color: #334155; margin-bottom: 6px;">🏷️ {r['Producto']} <span style="color: #64748b;">(Vendedor: {r['Nombre_Vendedor']})</span></div>
+    <div style="font-size: 14px; font-weight: bold; color: #10b981;">Total Abonado: ${r['Total_Abono']:,.2f}</div>
+</div>
+""", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+<div style="background-color: #f8fafc; padding: 14px 18px; border-radius: 8px; border-left: 5px solid #3b82f6; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+    <div style="font-size: 15px; color: #1e293b; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+        <span>👤 <b>{r['Cliente']}</b> <span style="font-size: 11px; color: #64748b;">(Folio #{r['ID_Venta']})</span></span>
+        <span style="font-size: 12px; color: #1d4ed8; font-weight: 600; background-color: #dbeafe; padding: 2px 10px; border-radius: 12px;">⏳ Activa: {fecha_v_str}</span>
+    </div>
+    <div style="font-size: 13px; color: #334155; margin-bottom: 6px;">🏷️ {r['Producto']} <span style="color: #64748b;">(Vendedor: {r['Nombre_Vendedor']})</span></div>
+    <div style="font-size: 13px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap;">
+        <span style="color: #475569;">Total: <b>${r['Total_Venta']:,.2f}</b></span>
+        <span style="color: #059669;">Abonado: <b>${r['Total_Abono']:,.2f}</b></span>
+        <span style="color: #dc2626; font-weight: bold; background-color: #fee2e2; padding: 2px 8px; border-radius: 6px;">Por Cobrar: ${r['Saldo_Pendiente']:,.2f}</span>
+    </div>
 </div>
 """, unsafe_allow_html=True)
                     
                     with st.expander("Ver Historial de Abonos"):
-                        if not abonos_venta.empty:
-                            for _, abono in abonos_venta.iterrows():
-                                if pd.notnull(abono['fecha_abono']):
+                        if abonos_lista:
+                            for abono in abonos_lista:
+                                if pd.notnull(abono.get('fecha_abono')):
                                     try:
                                         dt = pd.to_datetime(abono['fecha_abono'])
-                                        dt_local = dt
-                                        f_str = dt_local.strftime("%Y-%m-%d")
+                                        f_str = dt.strftime("%Y-%m-%d")
                                     except:
                                         f_str = str(abono['fecha_abono'])[:10]
                                 else:
                                     f_str = "Fecha desconocida"
-                                st.markdown(f"👉 **{f_str}** | **${abono['monto_abono']:,.2f}** *({abono.get('metodo_pago', 'N/A')})*")
+                                monto_val = float(abono.get('monto_abono', 0.0) or 0.0)
+                                metodo_val = abono.get('metodo_pago', 'N/A')
+                                st.markdown(f"👉 **{f_str}** | **${monto_val:,.2f}** *({metodo_val})*")
                         else:
-                            st.info("Esta venta fue marcada como liquidada sin registro de abonos individuales (posible migración manual).")
+                            st.info("Sin abonos registrados aún.")
                         st.markdown("<br>", unsafe_allow_html=True)
         else:
-            st.info("No hay ventas cerradas (pagadas al 100%) en el sistema todavía.")
+            st.info("No hay ventas registradas en el sistema todavía.")
 
     with tab10:
         st.subheader("🎭 Modo Simulación de Usuarios (Impersonation)")
