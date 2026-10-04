@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import urllib.parse
 
 def generar_pdf_inventario(df_inventario, nombre_vendedor):
     try:
@@ -266,15 +267,28 @@ def render_tab_inteligencia(db):
     gmroi_global = (total_utilidad_bruta / costo_inv_actual) if costo_inv_actual > 0 else 0.0
 
     # Ciclo de Conversión de Efectivo (CCC)
-    # DIO (Días de Inventario) = (Costo Inventario / Costo Ventas) * 30
-    # DSO (Días de Cobro) = (Cuentas por Cobrar / Ventas Totales) * 30
-    dio = (costo_inv_actual / total_costo_historico * 30) if total_costo_historico > 0 else 0.0
-    dso = (total_pendiente / total_ventas_dinero * 30) if total_ventas_dinero > 0 else 0.0
+    df_ventas['fecha_dt_calc'] = pd.to_datetime(df_ventas['fecha_venta'], errors='coerce')
+    f_min = df_ventas['fecha_dt_calc'].min()
+    f_max = df_ventas['fecha_dt_calc'].max()
+    dias_operacion = max((f_max - f_min).days, 30) if pd.notnull(f_min) and pd.notnull(f_max) else 30
+    
+    cogs_diario = (total_costo_historico / dias_operacion) if dias_operacion > 0 and total_costo_historico > 0 else 1.0
+    ventas_diarias = (total_ventas_dinero / dias_operacion) if dias_operacion > 0 and total_ventas_dinero > 0 else 1.0
+    
+    dio = (costo_inv_actual / cogs_diario) if cogs_diario > 0 else 0.0
+    dso = (total_pendiente / ventas_diarias) if ventas_diarias > 0 else 0.0
     dpo = 15.0 # Días promedio de crédito con proveedor
-    ccc_dias = dio + dso - dpo
+    ccc_dias = max(dio + dso - dpo, 0.0)
 
-    # Punto de Equilibrio (Break-Even)
-    gastos_fijos_est = 5000.0
+    # Punto de Equilibrio (Break-Even) vinculado a gastos reales
+    try:
+        df_gastos_eq = db.obtener_gastos()
+        total_gastos_reg = df_gastos_eq['Monto'].sum() if not df_gastos_eq.empty else 0.0
+        meses_op = max(dias_operacion / 30.0, 1.0)
+        gastos_fijos_est = (total_gastos_reg / meses_op) if total_gastos_reg > 0 else 5000.0
+    except:
+        gastos_fijos_est = 5000.0
+        
     margen_contrib_ratio = (total_utilidad_bruta / total_ventas_dinero) if total_ventas_dinero > 0 else 0.0
     punto_equilibrio_val = (gastos_fijos_est / margen_contrib_ratio) if margen_contrib_ratio > 0 else 0.0
 
@@ -817,6 +831,9 @@ def render_tab_clientes_vips(db, df_todas):
                     
                     border_c = "#ef4444" if dias_ant > 60 else "#f97316" if dias_ant > 30 else "#eab308" if dias_ant > 15 else "#22c55e"
                     
+                    msg_cobro = f"Hola {r_d['Cliente']}, esperamos te encuentres excelente. Te contactamos de Catálogo FB para dar seguimiento a tu compra de {r_d['Producto']}. Cuentas con un saldo pendiente de ${sal_v:,.2f} MXN. ¿Te gustaría liquidarlo por transferencia o efectivo?"
+                    msg_cobro_enc = urllib.parse.quote(msg_cobro)
+                    
                     st.markdown(f"""
                     <div style='background-color: #ffffff; padding: 12px 16px; border-radius: 10px; border-left: 5px solid {border_c}; margin-bottom: 8px; border-top: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.03);'>
                         <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;'>
@@ -837,10 +854,14 @@ def render_tab_clientes_vips(db, df_todas):
                                 <div style='width: {pct_pagado:.1f}%; background-color: #22c55e; height: 100%; border-radius: 10px;'></div>
                             </div>
                         </div>
-                        <div style='display: flex; justify-content: space-between; align-items: center; background-color: #fafafa; padding: 6px 12px; border-radius: 6px; font-size: 12px;'>
-                            <div><span style='color: #64748b;'>Ticket Total:</span> <b>${tot_v:,.2f}</b></div>
-                            <div><span style='color: #166534;'>Cobrado:</span> <b style='color: #15803d;'>${ab_v:,.2f}</b></div>
-                            <div><span style='color: #991b1b;'>Resta por Cobrar:</span> <b style='color: #dc2626; font-size: 14px;'>${sal_v:,.2f} MXN</b></div>
+                        <div style='display: flex; justify-content: space-between; align-items: center; background-color: #fafafa; padding: 6px 12px; border-radius: 6px; font-size: 12px; flex-wrap: wrap; gap: 8px;'>
+                            <div><span style='color: #64748b;'>Ticket:</span> <b>${tot_v:,.2f}</b> | <span style='color: #166534;'>Cobrado:</span> <b style='color: #15803d;'>${ab_v:,.2f}</b></div>
+                            <div><span style='color: #991b1b;'>Por Cobrar:</span> <b style='color: #dc2626; font-size: 14px;'>${sal_v:,.2f} MXN</b></div>
+                            <div>
+                                <a href="https://wa.me/?text={msg_cobro_enc}" target="_blank" style="text-decoration: none; background: #25d366; color: white; padding: 4px 12px; border-radius: 14px; font-size: 11px; font-weight: bold; display: inline-flex; align-items: center; gap: 4px;">
+                                    💬 Cobrar por WhatsApp
+                                </a>
+                            </div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -1058,9 +1079,22 @@ def show():
             
             # --- SECCION: SALUD DE COBRANZA ---
             st.markdown("<h4 style='color: #475569;'>📊 Salud Financiera y Cobranza</h4>", unsafe_allow_html=True)
-            abonos_totales = df_todas_kpi["Total_Abono"].sum()
+            
+            # Dinero real cobrado en caja durante el período seleccionado:
+            cobrado_en_periodo = 0.0
+            if not df_abonos_global.empty and "fecha_abono" in df_abonos_global.columns:
+                dt_ab = pd.to_datetime(df_abonos_global["fecha_abono"], errors='coerce')
+                if target_year is not None and target_month is not None:
+                    mask_ab = (dt_ab.dt.year == target_year) & (dt_ab.dt.month == target_month)
+                    cobrado_en_periodo = df_abonos_global.loc[mask_ab, "monto_abono"].sum()
+                else:
+                    cobrado_en_periodo = df_abonos_global["monto_abono"].sum()
+            else:
+                cobrado_en_periodo = df_todas_kpi["Total_Abono"].sum()
+
+            abonos_totales_ventas = df_todas_kpi["Total_Abono"].sum()
             deuda_calle = df_todas_kpi["Saldo_Pendiente"].sum()
-            tasa_cobranza = (abonos_totales / ventas_totales * 100) if ventas_totales > 0 else 0
+            tasa_cobranza = (abonos_totales_ventas / ventas_totales * 100) if ventas_totales > 0 else 0
             
             # Dinero esperando en stock:
             df_inv_global = db.leer_inventario()
@@ -1071,9 +1105,9 @@ def show():
                 valor_inventario = (df_inv_global["stock"] * df_inv_global["precio"]).sum()
             
             cal1, cal2, cal3, cal4 = st.columns(4)
-            cal1.metric("💰 Dinero en Banco (Cobrado)", f"${abonos_totales:,.2f}")
-            cal2.metric("💳 Deuda en la Calle", f"${deuda_calle:,.2f}")
-            cal3.metric("🎯 Tasa de Cobranza", f"{tasa_cobranza:.1f}%", f"{tasa_cobranza-100:.1f}% vs Ideal")
+            cal1.metric("💰 Cobranza en Caja / Banco", f"${cobrado_en_periodo:,.2f}", f"Abonos reales de {etiqueta_periodo}")
+            cal2.metric("💳 Saldo Pendiente (Ventas Mes)", f"${deuda_calle:,.2f}", f"Deuda ventas {etiqueta_periodo}")
+            cal3.metric("🎯 Tasa Cobranza (Ventas Mes)", f"{tasa_cobranza:.1f}%", f"{tasa_cobranza-100:.1f}% vs Ideal")
             cal4.metric("📦 Retorno Estimado (Stock)", f"${valor_inventario:,.2f}", "Potencial si vendes todo", delta_color="off")
             
             # --- BURBUJA DE CUENTAS PENDIENTES DEL PERÍODO SELECCIONADO ---
