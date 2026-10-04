@@ -374,6 +374,18 @@ class DatabaseHandler:
         session = self.get_session()
         try:
             nombre_val = str(datos["nombre"]).strip()
+            f_val = datos.get("fecha_ingreso")
+            if f_val:
+                if isinstance(f_val, str):
+                    try:
+                        f_val = datetime.datetime.fromisoformat(f_val)
+                    except:
+                        f_val = get_mexico_time()
+                elif isinstance(f_val, datetime.date) and not isinstance(f_val, datetime.datetime):
+                    f_val = datetime.datetime.combine(f_val, datetime.time.min)
+            else:
+                f_val = get_mexico_time()
+
             if producto_id:
                 prod = session.query(Producto).filter_by(id=producto_id, vendedor_email=vendedor_email).first()
                 if not prod:
@@ -384,8 +396,7 @@ class DatabaseHandler:
                 prod.costo_compra = float(datos.get("costo_compra", 0.0))
                 prod.proveedor = str(datos.get("proveedor", "Generico")).strip()
                 prod.stock = int(datos.get("stock", 0))
-                if datos.get("fecha_ingreso"):
-                    prod.fecha_ingreso = datos.get("fecha_ingreso")
+                prod.fecha_ingreso = f_val
             else:
                 prod = Producto(
                     nombre=nombre_val,
@@ -395,7 +406,7 @@ class DatabaseHandler:
                     costo_compra=float(datos.get("costo_compra", 0.0)),
                     proveedor=str(datos.get("proveedor", "Generico")).strip(),
                     stock=int(datos.get("stock", 0)),
-                    fecha_ingreso=datos.get("fecha_ingreso", get_mexico_time())
+                    fecha_ingreso=f_val
                 )
                 session.add(prod)
             self.asegurar_en_catalogo(session, nombre_val)
