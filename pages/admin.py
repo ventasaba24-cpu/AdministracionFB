@@ -154,9 +154,13 @@ def dialog_gestion_inventario(db, vendedor_email, prod=None):
         
     lote = st.text_input("Lote ID", value=prod['lote'] if prod is not None and 'lote' in prod else "Lote 1")
     
-    # Fecha de ingreso
+    # Manejo Inteligente de Fecha de Ingreso:
+    # Si es producto nuevo, o tenía stock 0 (resurtido), o cambió de nombre, sugerir la fecha de HOY
+    stock_previo = int(prod['stock']) if prod is not None and 'stock' in prod and pd.notnull(prod['stock']) else 0
+    es_reabastecido_o_nuevo = (prod is None or stock_previo <= 0)
+    
     fecha_def = datetime.date.today()
-    if prod is not None and prod.get('fecha_ingreso'):
+    if not es_reabastecido_o_nuevo and prod is not None and prod.get('fecha_ingreso'):
         try:
             if isinstance(prod['fecha_ingreso'], str):
                 fecha_def = datetime.datetime.strptime(str(prod['fecha_ingreso'])[:10], "%Y-%m-%d").date()
@@ -165,7 +169,17 @@ def dialog_gestion_inventario(db, vendedor_email, prod=None):
         except Exception:
             pass
             
-    fecha_ingreso_val = st.date_input("📅 Fecha de Ingreso de Inventario", value=fecha_def)
+    col_f1, col_f2 = st.columns([3, 2])
+    with col_f1:
+        fecha_ingreso_val = st.date_input("📅 Fecha de Ingreso de Inventario", value=fecha_def, key="input_fecha_ingreso_dialog")
+    with col_f2:
+        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+        btn_hoy = st.button("🔄 Poner Fecha de Hoy", key="btn_fecha_hoy_inv", help="Actualiza la fecha de ingreso al día de hoy para que cuente como nuevo lote / resurtido.")
+        if btn_hoy:
+            fecha_ingreso_val = datetime.date.today()
+            
+    if es_reabastecido_o_nuevo and prod is not None:
+        st.caption("✨ *Este producto no tenía stock disponible. Se sugiere la fecha de hoy para registrar el nuevo ingreso/resurtido.*")
     
     precio = st.number_input("Precio Final Público ($)", min_value=0.0, value=float(prod['precio']) if prod is not None else 0.0, step=50.0)
     costo = st.number_input("Costo Compra Prov ($)", min_value=0.0, value=float(prod.get('costo_compra', 0.0)) if prod is not None else 0.0, step=50.0)
@@ -178,6 +192,10 @@ def dialog_gestion_inventario(db, vendedor_email, prod=None):
             if not nombre:
                 st.error("El nombre es requerido.")
             else:
+                # Si el nombre cambió respecto a la fila original reutilizada, o el stock pasó de 0 a positivo, garantizar fecha actualizada
+                nombre_cambio = (prod is not None and prod.get('nombre') and prod.get('nombre').strip().lower() != nombre.strip().lower())
+                fecha_final = datetime.date.today() if (nombre_cambio or (es_reabastecido_o_nuevo and stock > 0)) and fecha_ingreso_val == fecha_def and es_reabastecido_o_nuevo else fecha_ingreso_val
+                
                 datos = {
                     "nombre": nombre,
                     "lote": lote,
@@ -185,7 +203,7 @@ def dialog_gestion_inventario(db, vendedor_email, prod=None):
                     "costo_compra": costo,
                     "proveedor": proveedor,
                     "stock": stock,
-                    "fecha_ingreso": fecha_ingreso_val
+                    "fecha_ingreso": fecha_final
                 }
                 prod_id = prod['id'] if prod is not None else None
                 exito, msj = db.upsert_producto(vendedor_email, datos, prod_id)
