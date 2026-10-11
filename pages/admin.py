@@ -2524,7 +2524,7 @@ def show():
     elif tab_activa == "📝 Correcciones":
         st.subheader("🕵️ Buscador Inteligente para Correcciones")
         st.markdown("Busca cualquier registro rápidamente para modificarlo o eliminarlo permanentemente del sistema sin dejar basura ni descuadrar tus inventarios.")
-        tipo_correccion = st.radio("¿Qué tipo de registro deseas corregir?", ["Ventas", "Abonos", "🔗 Homologar Perfumes Duplicados"], horizontal=True)
+        tipo_correccion = st.radio("¿Qué tipo de registro deseas corregir?", ["Ventas", "Abonos", "🏷️ Estandarizar Nombres de Perfumes"], horizontal=True)
         
         if tipo_correccion in ["Ventas", "Abonos"]:
             busqueda = st.text_input("🔍 Escribe para buscar...", placeholder="Por ejemplo: Maria, 45, o nombre de producto", key="buscador_admin")
@@ -2668,224 +2668,173 @@ def show():
                 else:
                     st.warning("No se encontró ningún Abono coincidente.")
 
-        elif tipo_correccion == "🔗 Homologar Perfumes Duplicados":
-            st.markdown("### 🔗 Homologación y Fusión de Perfumes Duplicados")
+        elif tipo_correccion == "🏷️ Estandarizar Nombres de Perfumes":
+            st.markdown("### 🏷️ Estandarización y Corrección de Nombres de Perfumes")
             if "mensaje_exito_fusion" in st.session_state:
                 st.success(st.session_state.pop("mensaje_exito_fusion"))
-            st.markdown("Unifica productos registrados con nombres ligeramente distintos (por ejemplo: `LATTAFA KHAMRAH UNISEX 100 ml` y `LATTAFA KHAMRAH 100 ml`). Esta herramienta **consolida todas las ventas pasadas y suma el stock en un solo perfume oficial**, corrigiendo inmediatamente el Top 10 y los reportes.")
             
-            with st.expander("🛠️ Herramienta de Recuperación: Restaurar 'LATTAFA YARA WOMEN 100 ml'", expanded=True):
-                st.markdown("""
-                **¿Detectaste que 'LATTAFA YARA WOMEN 100 ml' se unificó indebidamente con 'YARA TOUS'?**
-                Presiona este botón para devolver de inmediato el Yara Clásico al inventario de Luz Cibrián con sus 2 lotes (1 pz y 5 pzs a $820.00) y corregir el stock de Yara Tous.
-                """)
-                if st.button("🔄 Ejecutar Restauración Inmediata de LATTAFA YARA WOMEN", type="primary", key="btn_restaurar_yara"):
-                    ok_r, msj_r = db.restaurar_lattafa_yara_clasico()
-                    if ok_r:
-                        st.session_state["mensaje_exito_fusion"] = msj_r
+            st.markdown("""
+            Corrige y unifica nombres mal escritos o variantes de catálogo (por ejemplo: corregir un dedazo o estandarizar `LATTAFA ASAD EDP 100 ml` a `LATTAFA ASAD 100 ml`).
+            
+            🛡️ **Operación 100% Segura y No Destructiva:**
+            * **Cero eliminaciones:** No se borra ninguna fila ni pieza de inventario.
+            * **Preserva costos y fechas:** Mantiene intactos los costos de compra históricos, fechas de ingreso y márgenes contables.
+            * **Protección de Lotes:** Si ambos perfumes tienen piezas en el mismo lote (ej. Lote 1), el sistema crea una subdivisión automática y segura (ej. Lote 1-B) para que jamás se mezclen costos.
+            * **Actualización en Ventas:** Todas las ventas históricas se actualizan bajo el nombre oficial, consolidando el Top 10 y reportes de vendedores.
+            """)
+            
+            todos_prods = db.obtener_todos_los_nombres_productos()
+            if len(todos_prods) >= 2:
+                df_inv_global = db.leer_inventario()
+                
+                def render_ficha_inspeccion(prod_nombre, es_origen=True):
+                    if not prod_nombre:
+                        return
+                    # Inventario
+                    inv = df_inv_global[df_inv_global["nombre"] == prod_nombre] if not df_inv_global.empty and "nombre" in df_inv_global else pd.DataFrame()
+                    stock_total = int(inv["stock"].sum()) if not inv.empty and "stock" in inv else 0
+                    lotes_str = ", ".join(inv["lote"].dropna().unique().astype(str)) if not inv.empty and "lote" in inv else "Lote 1"
+                    fechas_inv = [str(f)[:10] for f in inv["fecha_ingreso"].dropna().unique() if str(f).strip() and str(f) != "None"] if not inv.empty and "fecha_ingreso" in inv else []
+                    fecha_reg = fechas_inv[0] if fechas_inv else "Sin fecha"
+                    precio_lista = float(inv["precio"].mean()) if not inv.empty and "precio" in inv else 0.0
+
+                    # Ventas
+                    vnt = df_todas[df_todas["Producto"] == prod_nombre] if not df_todas.empty and "Producto" in df_todas else pd.DataFrame()
+                    ventas_pzs = int(vnt["Cantidad"].sum()) if not vnt.empty and "Cantidad" in vnt else 0
+                    total_dinero = float(vnt["Total_Venta"].sum()) if not vnt.empty and "Total_Venta" in vnt else 0.0
+
+                    color_borde = "#ef4444" if es_origen else "#10b981"
+                    bg_color = "#fff1f2" if es_origen else "#f0fdf4"
+                    titulo_rol = "Nombre Actual que se Cambiará" if es_origen else "Nombre Oficial que Recibirá"
+                    badge_color = "#991b1b" if es_origen else "#166534"
+
+                    st.markdown(f"""
+                    <div style='background: {bg_color}; padding: 12px 14px; border-radius: 8px; border-left: 4px solid {color_borde}; margin-top: 8px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); font-size: 13px;'>
+                        <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;'>
+                            <span style='font-weight: 700; color: {badge_color}; font-size: 13px;'>📋 {titulo_rol}</span>
+                            <span style='background: rgba(0,0,0,0.06); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;'>Stock: {stock_total} pzs</span>
+                        </div>
+                        <div style='color: #334155; line-height: 1.5; font-size: 12px;'>
+                            <b>📅 Alta Bodega:</b> {fecha_reg} | <b>Lote:</b> {lotes_str}<br>
+                            <b>💰 Precio Lista:</b> ${precio_lista:,.2f} | <b>🛒 Total Ventas:</b> {ventas_pzs} pzs (${total_dinero:,.2f})
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    if not vnt.empty:
+                        with st.expander(f"👥 Ver {len(vnt)} venta(s) registrada(s) y compradores", expanded=False):
+                            for _, r in vnt.iterrows():
+                                f_venta = str(r.get("Fecha_Venta", ""))[:10]
+                                cl = r.get("Cliente", "Desconocido")
+                                tot = float(r.get("Total_Venta", 0.0))
+                                vnd = r.get("Nombre_Vendedor", "Vendedora")
+                                fol = r.get("ID_Venta", "")
+                                cant = int(r.get("Cantidad", 1))
+                                st.markdown(f"""
+                                <div style='background: #ffffff; padding: 6px 10px; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 5px; font-size: 12px; display: flex; justify-content: space-between; align-items: center;'>
+                                    <div>
+                                        <b>👤 {cl}</b> <span style='color: #64748b; font-size: 11px;'>({f_venta})</span><br>
+                                        <span style='color: #64748b; font-size: 11px;'>👩‍💼 {vnd} | Folio #{fol} ({cant} pz)</span>
+                                    </div>
+                                    <div style='text-align: right;'>
+                                        <b style='color: #047857; font-size: 13px;'>${tot:,.2f}</b>
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                    else:
+                        st.caption("ℹ️ *Sin ventas registradas en el historial con este nombre.*")
+
+                col_m1, col_m2 = st.columns(2)
+                with col_m1:
+                    try:
+                        from st_keyup import st_keyup
+                        f_busq_orig = st_keyup("🔍 Filtrar nombre que deseas cambiar:", placeholder="Escribe para filtrar (ej: 212, 9pm)...", key="txt_busq_orig", debounce=350)
+                    except (ImportError, TypeError):
+                        f_busq_orig = st.text_input("🔍 Filtrar nombre que deseas cambiar:", placeholder="Escribe para filtrar (ej: 212, 9pm)...", key="txt_busq_orig")
+                    
+                    norm_bo = normalizar_texto(f_busq_orig)
+                    opciones_orig = [p for p in todos_prods if norm_bo in normalizar_texto(p)] if norm_bo else todos_prods
+                    if not opciones_orig:
+                        st.warning(f"No hay coincidencias para '{f_busq_orig}'. Mostrando todos.")
+                        opciones_orig = todos_prods
+                    elif norm_bo and len(opciones_orig) < len(todos_prods):
+                        st.caption(f"🎯 *Mostrando {len(opciones_orig)} coincidencia(s)*")
+
+                    origen_man = st.selectbox(
+                        "1. Selecciona el perfume que deseas corregir o renombrar:",
+                        options=opciones_orig,
+                        key="sel_man_origen"
+                    )
+                    render_ficha_inspeccion(origen_man, es_origen=True)
+
+                with col_m2:
+                    try:
+                        from st_keyup import st_keyup
+                        f_busq_dest = st_keyup("🔍 Filtrar nombre oficial existente:", placeholder="Escribe para filtrar (ej: vip, afnan)...", key="txt_busq_dest", debounce=350)
+                    except (ImportError, TypeError):
+                        f_busq_dest = st.text_input("🔍 Filtrar nombre oficial existente:", placeholder="Escribe para filtrar (ej: vip, afnan)...", key="txt_busq_dest")
+
+                    base_dest = [p for p in todos_prods if p != origen_man]
+                    norm_bd = normalizar_texto(f_busq_dest)
+                    opciones_dest = [p for p in base_dest if norm_bd in normalizar_texto(p)] if norm_bd else base_dest
+                    if not opciones_dest:
+                        st.warning(f"No hay coincidencias para '{f_busq_dest}'. Mostrando todos.")
+                        opciones_dest = base_dest
+                    elif norm_bd and len(opciones_dest) < len(base_dest):
+                        st.caption(f"🎯 *Mostrando {len(opciones_dest)} coincidencia(s)*")
+
+                    destino_man = st.selectbox(
+                        "2. Nombre oficial definitivo al que se homologará:",
+                        options=opciones_dest,
+                        key="sel_man_destino"
+                    )
+                    render_ficha_inspeccion(destino_man, es_origen=False)
+                
+                usar_nuevo_nombre = st.checkbox("✍️ Escribir un nombre oficial nuevo (si deseas rebautizarlo o corregir ortografía)")
+                nombre_destino_final = destino_man
+                if usar_nuevo_nombre:
+                    nuevo_nombre_custom = st.text_input("Escribe el nombre oficial final:", placeholder="Ej: Lattafa Khamrah 100 ml")
+                    if nuevo_nombre_custom.strip():
+                        nombre_destino_final = nuevo_nombre_custom.strip()
+                
+                # Verificación de seguridad de precios
+                inv_o = df_inv_global[df_inv_global["nombre"] == origen_man] if not df_inv_global.empty and "nombre" in df_inv_global else pd.DataFrame()
+                inv_d = df_inv_global[df_inv_global["nombre"] == nombre_destino_final] if not df_inv_global.empty and "nombre" in df_inv_global else pd.DataFrame()
+                pr_o = float(inv_o["precio"].mean()) if not inv_o.empty and "precio" in inv_o else 0.0
+                pr_d = float(inv_d["precio"].mean()) if not inv_d.empty and "precio" in inv_d else 0.0
+                if pr_o > 0 and pr_d > 0 and abs(pr_o - pr_d) > 25:
+                    st.error(f"🛑 **¡Atención a los Precios!** '{origen_man}' tiene precio de lista de **${pr_o:,.2f}**, mientras que '{nombre_destino_final}' cuesta **${pr_d:,.2f}**. Si son aromas o versiones distintas (flankers), NO los homologues.")
+
+                st.info(f"ℹ️ **Acción a realizar:** Se actualizará el nombre de **'{origen_man}'** a **'{nombre_destino_final}'** en todas sus ventas históricas y piezas de inventario, manteniendo intactos todos los costos, fechas y cuentas por cobrar.")
+                
+                if st.button("🏷️ Aplicar Nombre Oficial a Ventas e Inventario", type="primary", key="btn_confirmar_manual"):
+                    ex, msj = db.homologar_fusionar_productos(origen_man, nombre_destino_final)
+                    if ex:
+                        st.session_state["mensaje_exito_fusion"] = msj
                         st.rerun()
                     else:
-                        st.error(msj_r)
-
-            sub_modo = st.radio("Método de Trabajo:", ["🤖 Sugerencias Inteligentes de Duplicados", "🛠️ Fusión Manual"], horizontal=True, key="modo_homologacion")
-            
-            if sub_modo == "🤖 Sugerencias Inteligentes de Duplicados":
-                with st.spinner("Analizando catálogo y ventas en busca de discrepancias..."):
-                    parejas = db.detectar_duplicados_sugeridos()
-                
-                if parejas:
-                    st.markdown(f"#### 🔍 Se detectaron {len(parejas)} posibles variantes del mismo perfume:")
-                    for idx_p, p in enumerate(parejas):
-                        with st.container():
-                            st.markdown(f"""
-                            <div style='background: #ffffff; padding: 12px 16px; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;'>
-                                <div style='font-size: 14px; font-weight: bold; color: #1e293b; margin-bottom: 6px;'>
-                                    Similitud {p['similitud']}%: <span style='color: #ef4444;'>{p['origen']}</span> ➔ <span style='color: #10b981;'>{p['destino']}</span>
-                                </div>
-                                <div style='font-size: 12px; color: #64748b; line-height: 1.5;'>
-                                    <b>Variante (A retirar):</b> {p['ventas_origen']} ventas | {p['stock_origen']} pzs en stock<br>
-                                    <b>Destino (Oficial a conservar):</b> {p['ventas_destino']} ventas | {p['stock_destino']} pzs en stock
-                                </div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            c_f1, c_f2 = st.columns([2, 1])
-                            with c_f1:
-                                if st.button(f"🔗 Fusionar '{p['origen']}' ➔ '{p['destino']}'", key=f"btn_fus_{idx_p}", type="primary"):
-                                    ex, msj = db.homologar_fusionar_productos(p['origen'], p['destino'])
-                                    if ex:
-                                        st.session_state["mensaje_exito_fusion"] = msj
-                                        st.rerun()
-                                    else:
-                                        st.error(msj)
-                            with c_f2:
-                                if st.button(f"🔄 Invertir (Dejar '{p['origen']}')", key=f"btn_inv_{idx_p}"):
-                                    ex, msj = db.homologar_fusionar_productos(p['destino'], p['origen'])
-                                    if ex:
-                                        st.session_state["mensaje_exito_fusion"] = msj
-                                        st.rerun()
-                                    else:
-                                        st.error(msj)
-                            st.markdown("<hr style='margin: 12px 0; border: none; border-top: 1px solid #f1f5f9;'>", unsafe_allow_html=True)
-                else:
-                    st.success("✅ ¡Excelente! No se detectaron productos duplicados con alta similitud en este momento.")
-            
+                        st.error(msj)
             else:
-                st.markdown("#### 🛠️ Fusión Manual de Perfumes")
-                st.markdown("Selecciona manualmente la variante que deseas retirar y el nombre oficial definitivo que deseas conservar.")
-                
-                todos_prods = db.obtener_todos_los_nombres_productos()
-                if len(todos_prods) >= 2:
-                    df_inv_global = db.leer_inventario()
-                    
-                    def render_ficha_inspeccion(prod_nombre, es_origen=True):
-                        if not prod_nombre:
-                            return
-                        # Inventario
-                        inv = df_inv_global[df_inv_global["nombre"] == prod_nombre] if not df_inv_global.empty and "nombre" in df_inv_global else pd.DataFrame()
-                        stock_total = int(inv["stock"].sum()) if not inv.empty and "stock" in inv else 0
-                        lotes_str = ", ".join(inv["lote"].dropna().unique().astype(str)) if not inv.empty and "lote" in inv else "Lote 1"
-                        fechas_inv = [str(f)[:10] for f in inv["fecha_ingreso"].dropna().unique() if str(f).strip() and str(f) != "None"] if not inv.empty and "fecha_ingreso" in inv else []
-                        fecha_reg = fechas_inv[0] if fechas_inv else "Sin fecha"
-                        precio_lista = float(inv["precio"].mean()) if not inv.empty and "precio" in inv else 0.0
+                st.info("No hay suficientes productos registrados en el sistema para realizar estandarizaciones.")
 
-                        # Ventas
-                        vnt = df_todas[df_todas["Producto"] == prod_nombre] if not df_todas.empty and "Producto" in df_todas else pd.DataFrame()
-                        ventas_pzs = int(vnt["Cantidad"].sum()) if not vnt.empty and "Cantidad" in vnt else 0
-                        total_dinero = float(vnt["Total_Venta"].sum()) if not vnt.empty and "Total_Venta" in vnt else 0.0
-
-                        color_borde = "#ef4444" if es_origen else "#10b981"
-                        bg_color = "#fff1f2" if es_origen else "#f0fdf4"
-                        titulo_rol = "Variante que se Retirará" if es_origen else "Nombre Oficial a Conservar"
-                        badge_color = "#991b1b" if es_origen else "#166534"
-
-                        st.markdown(f"""
-                        <div style='background: {bg_color}; padding: 12px 14px; border-radius: 8px; border-left: 4px solid {color_borde}; margin-top: 8px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); font-size: 13px;'>
-                            <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;'>
-                                <span style='font-weight: 700; color: {badge_color}; font-size: 13px;'>📋 {titulo_rol}</span>
-                                <span style='background: rgba(0,0,0,0.06); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;'>Stock: {stock_total} pzs</span>
-                            </div>
-                            <div style='color: #334155; line-height: 1.5; font-size: 12px;'>
-                                <b>📅 Alta Bodega:</b> {fecha_reg} | <b>Lote:</b> {lotes_str}<br>
-                                <b>💰 Precio Lista:</b> ${precio_lista:,.2f} | <b>🛒 Total Ventas:</b> {ventas_pzs} pzs (${total_dinero:,.2f})
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-                        if not vnt.empty:
-                            with st.expander(f"👥 Ver {len(vnt)} venta(s) registrada(s) y compradores", expanded=True):
-                                for _, r in vnt.iterrows():
-                                    f_venta = str(r.get("Fecha_Venta", ""))[:10]
-                                    cl = r.get("Cliente", "Desconocido")
-                                    tot = float(r.get("Total_Venta", 0.0))
-                                    vnd = r.get("Nombre_Vendedor", "Vendedora")
-                                    fol = r.get("ID_Venta", "")
-                                    cant = int(r.get("Cantidad", 1))
-                                    st.markdown(f"""
-                                    <div style='background: #ffffff; padding: 6px 10px; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 5px; font-size: 12px; display: flex; justify-content: space-between; align-items: center;'>
-                                        <div>
-                                            <b>👤 {cl}</b> <span style='color: #64748b; font-size: 11px;'>({f_venta})</span><br>
-                                            <span style='color: #64748b; font-size: 11px;'>👩‍💼 {vnd} | Folio #{fol} ({cant} pz)</span>
-                                        </div>
-                                        <div style='text-align: right;'>
-                                            <b style='color: #047857; font-size: 13px;'>${tot:,.2f}</b>
-                                        </div>
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                        else:
-                            st.caption("ℹ️ *Sin ventas registradas en el historial con este nombre.*")
-
-                    col_m1, col_m2 = st.columns(2)
-                    with col_m1:
-                        try:
-                            from st_keyup import st_keyup
-                            f_busq_orig = st_keyup("🔍 Filtrar variante a retirar:", placeholder="Escribe para filtrar (ej: 212, 9pm)...", key="txt_busq_orig", debounce=350)
-                        except (ImportError, TypeError):
-                            f_busq_orig = st.text_input("🔍 Filtrar variante a retirar:", placeholder="Escribe para filtrar (ej: 212, 9pm)...", key="txt_busq_orig")
-                        
-                        norm_bo = normalizar_texto(f_busq_orig)
-                        opciones_orig = [p for p in todos_prods if norm_bo in normalizar_texto(p)] if norm_bo else todos_prods
-                        if not opciones_orig:
-                            st.warning(f"No hay coincidencias para '{f_busq_orig}'. Mostrando todos.")
-                            opciones_orig = todos_prods
-                        elif norm_bo and len(opciones_orig) < len(todos_prods):
-                            st.caption(f"🎯 *Mostrando {len(opciones_orig)} coincidencia(s)*")
-
-                        origen_man = st.selectbox(
-                            "1. Variante duplicada que deseas retirar:",
-                            options=opciones_orig,
-                            key="sel_man_origen"
-                        )
-                        render_ficha_inspeccion(origen_man, es_origen=True)
-
-                    with col_m2:
-                        try:
-                            from st_keyup import st_keyup
-                            f_busq_dest = st_keyup("🔍 Filtrar nombre oficial:", placeholder="Escribe para filtrar (ej: vip, afnan)...", key="txt_busq_dest", debounce=350)
-                        except (ImportError, TypeError):
-                            f_busq_dest = st.text_input("🔍 Filtrar nombre oficial:", placeholder="Escribe para filtrar (ej: vip, afnan)...", key="txt_busq_dest")
-
-                        base_dest = [p for p in todos_prods if p != origen_man]
-                        norm_bd = normalizar_texto(f_busq_dest)
-                        opciones_dest = [p for p in base_dest if norm_bd in normalizar_texto(p)] if norm_bd else base_dest
-                        if not opciones_dest:
-                            st.warning(f"No hay coincidencias para '{f_busq_dest}'. Mostrando todos.")
-                            opciones_dest = base_dest
-                        elif norm_bd and len(opciones_dest) < len(base_dest):
-                            st.caption(f"🎯 *Mostrando {len(opciones_dest)} coincidencia(s)*")
-
-                        destino_man = st.selectbox(
-                            "2. Nombre oficial que debe quedar:",
-                            options=opciones_dest,
-                            key="sel_man_destino"
-                        )
-                        render_ficha_inspeccion(destino_man, es_origen=False)
-                    
-                    usar_nuevo_nombre = st.checkbox("✍️ Escribir un nombre oficial nuevo (si deseas rebautizarlo)")
-                    nombre_destino_final = destino_man
-                    if usar_nuevo_nombre:
-                        nuevo_nombre_custom = st.text_input("Escribe el nombre oficial final:", placeholder="Ej: Lattafa Khamrah 100 ml")
-                        if nuevo_nombre_custom.strip():
-                            nombre_destino_final = nuevo_nombre_custom.strip()
-                    
-                    # Verificación de seguridad de precios
-                    inv_o = df_inv_global[df_inv_global["nombre"] == origen_man] if not df_inv_global.empty and "nombre" in df_inv_global else pd.DataFrame()
-                    inv_d = df_inv_global[df_inv_global["nombre"] == nombre_destino_final] if not df_inv_global.empty and "nombre" in df_inv_global else pd.DataFrame()
-                    pr_o = float(inv_o["precio"].mean()) if not inv_o.empty and "precio" in inv_o else 0.0
-                    pr_d = float(inv_d["precio"].mean()) if not inv_d.empty and "precio" in inv_d else 0.0
-                    if pr_o > 0 and pr_d > 0 and abs(pr_o - pr_d) > 25:
-                        st.error(f"🛑 **¡Atención a los Precios!** '{origen_man}' tiene precio de lista de **${pr_o:,.2f}**, mientras que '{nombre_destino_final}' cuesta **${pr_d:,.2f}**. Si son aromas o versiones distintas (flankers), NO los fusiones.")
-
-                    st.warning(f"⚠️ **Atención:** Todas las ventas pasadas y piezas de inventario de **'{origen_man}'** se trasladarán permanentemente a **'{nombre_destino_final}'**.")
-                    
-                    if st.button("🔗 Confirmar Fusión de Productos", type="primary", key="btn_confirmar_manual"):
-                        ex, msj = db.homologar_fusionar_productos(origen_man, nombre_destino_final)
-                        if ex:
-                            st.session_state["mensaje_exito_fusion"] = msj
-                            st.rerun()
-                        else:
-                            st.error(msj)
-                else:
-                    st.info("No hay suficientes productos registrados en el sistema para realizar fusiones.")
-
-                # Mostrar Historial de Perfumes Unificados (Bitácora)
-                st.markdown("<hr style='margin: 25px 0 15px 0; border: none; border-top: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
-                st.markdown("#### 📜 Perfumes que se han Unificado (Historial)")
-                st.caption("Registro de todos los nombres duplicados que han sido fusionados y consolidados en el sistema.")
-                
-                historial_fusiones = db.obtener_historial_homologaciones()
-                if historial_fusiones:
-                    df_hist_fus = pd.DataFrame(historial_fusiones)
-                    df_display = pd.DataFrame({
-                        "Fecha y Hora": df_hist_fus["fecha"],
-                        "Variante Retirada (Origen)": df_hist_fus["nombre_retirado"],
-                        "Nombre Oficial (Destino)": df_hist_fus["nombre_oficial"],
-                        "Ventas Trasladadas": df_hist_fus["ventas_afectadas"].astype(str) + " pzs",
-                        "Stock Trasladado": df_hist_fus["stock_trasladado"].astype(str) + " pzs"
-                    })
-                    st.dataframe(df_display, use_container_width=True, hide_index=True)
-                else:
-                    st.info("Aún no se han registrado fusiones de productos en el historial.")
+            # Mostrar Historial de Perfumes Estandarizados (Bitácora)
+            st.markdown("<hr style='margin: 25px 0 15px 0; border: none; border-top: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
+            st.markdown("#### 📜 Perfumes Estandarizados (Historial)")
+            st.caption("Registro de nombres actualizados y homologados en el sistema.")
+            
+            historial_fusiones = db.obtener_historial_homologaciones()
+            if historial_fusiones:
+                df_hist_fus = pd.DataFrame(historial_fusiones)
+                df_display = pd.DataFrame({
+                    "Fecha y Hora": df_hist_fus["fecha"],
+                    "Nombre Anterior": df_hist_fus["nombre_retirado"],
+                    "Nombre Oficial": df_hist_fus["nombre_oficial"],
+                    "Ventas Actualizadas": df_hist_fus["ventas_afectadas"].astype(str) + " pzs",
+                    "Inventario Renombrado": df_hist_fus["stock_trasladado"].astype(str) + " pzs"
+                })
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("Aún no se han registrado estandarizaciones de productos en el historial.")
 
     elif tab_activa == "📉 Gastos y Egresos":
         st.subheader("Control de Gastos y Egresos Operativos")
