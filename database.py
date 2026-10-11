@@ -1490,10 +1490,9 @@ class DatabaseHandler:
         """Devuelve todos los nombres únicos existentes en ventas, inventario y catálogo."""
         session = self.get_session()
         try:
-            from sqlalchemy import distinct
-            n_ventas = [r[0] for r in session.query(distinct(Venta.producto_nombre)).all() if r[0] and str(r[0]).strip()]
-            n_inv = [r[0] for r in session.query(distinct(Producto.nombre)).all() if r[0] and str(r[0]).strip()]
-            n_cat = [r[0] for r in session.query(distinct(CatalogoProducto.nombre)).all() if r[0] and str(r[0]).strip()]
+            n_ventas = [r[0] for r in session.query(Venta.producto_nombre).distinct().all() if r[0] and str(r[0]).strip()]
+            n_inv = [r[0] for r in session.query(Producto.nombre).distinct().all() if r[0] and str(r[0]).strip()]
+            n_cat = [r[0] for r in session.query(CatalogoProducto.nombre).distinct().all() if r[0] and str(r[0]).strip()]
             todos = sorted(list(set(n_ventas + n_inv + n_cat)), key=lambda s: str(s).lower())
             return todos
         finally:
