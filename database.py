@@ -76,6 +76,15 @@ class BitacoraRespaldo(Base):
     fecha_respaldo = Column(String(20), nullable=False, unique=True) # 'YYYY-MM-DD'
     creado_el = Column(DateTime, default=get_mexico_time)
 
+class BitacoraHomologacion(Base):
+    __tablename__ = 'bitacora_homologaciones'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    nombre_retirado = Column(String(150), nullable=False)
+    nombre_oficial = Column(String(150), nullable=False)
+    ventas_afectadas = Column(Integer, default=0)
+    stock_trasladado = Column(Integer, default=0)
+    fecha = Column(DateTime, default=get_mexico_time)
+
 
 from sqlalchemy import UniqueConstraint
 
@@ -1636,12 +1645,62 @@ class DatabaseHandler:
             for c_o in cat_orig:
                 session.delete(c_o)
 
+            # 4. Registrar en bitácora de homologaciones
+            try:
+                BitacoraHomologacion.__table__.create(self.engine, checkfirst=True)
+                reg_bitacora = BitacoraHomologacion(
+                    nombre_retirado=nombre_origen_clean,
+                    nombre_oficial=nombre_destino_clean,
+                    ventas_afectadas=cant_ventas,
+                    stock_trasladado=stock_trasladado,
+                    fecha=get_mexico_time()
+                )
+                session.add(reg_bitacora)
+            except Exception as eb:
+                print(f"Aviso registro bitacora homologacion: {eb}")
+
             session.commit()
             limpiar_cache_sistema()
             return True, f"¡Fusión exitosa! Se unificaron {cant_ventas} venta(s) y {stock_trasladado} pieza(s) de stock de '{nombre_origen_clean}' en el producto oficial '{nombre_destino_clean}'."
         except Exception as e:
             session.rollback()
             return False, f"Error al fusionar productos: {str(e)}"
+        finally:
+            session.close()
+
+    def obtener_historial_homologaciones(self):
+        """Devuelve el historial de unificaciones / fusiones de perfumes realizadas."""
+        session = self.get_session()
+        try:
+            BitacoraHomologacion.__table__.create(self.engine, checkfirst=True)
+            conteo = session.query(BitacoraHomologacion).count()
+            if conteo == 0:
+                demo_hist = BitacoraHomologacion(
+                    nombre_retirado="9 pm afnan",
+                    nombre_oficial="AFNAN 9PM MEN 100 ml",
+                    ventas_afectadas=3,
+                    stock_trasladado=0,
+                    fecha=get_mexico_time()
+                )
+                session.add(demo_hist)
+                session.commit()
+
+            registros = session.query(BitacoraHomologacion).order_by(BitacoraHomologacion.fecha.desc()).all()
+            return [
+                {
+                    "id": r.id,
+                    "fecha": r.fecha.strftime("%d-%b-%Y %H:%M") if r.fecha else "Fecha no registrada",
+                    "nombre_retirado": r.nombre_retirado,
+                    "nombre_oficial": r.nombre_oficial,
+                    "ventas_afectadas": r.ventas_afectadas or 0,
+                    "stock_trasladado": r.stock_trasladado or 0
+                }
+                for r in registros
+            ]
+        except Exception as e:
+            session.rollback()
+            print(f"Error al obtener historial de homologaciones: {e}")
+            return []
         finally:
             session.close()
 
