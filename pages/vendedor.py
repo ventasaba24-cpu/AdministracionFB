@@ -457,10 +457,10 @@ def show():
         st.markdown("---")
         
         st.subheader("⚠️ Clientes con Adeudo")
-        
-        if not df_todas.empty:
+        if not df_mis_ventas.empty and "Estado_Venta" in df_mis_ventas:
             # Traemos más columnas para el popup (Fecha_Venta, Total_Venta, ID_Venta)
-            df_adeudos = df_mis_ventas[df_mis_ventas["Estado_Venta"] == "Adeudo"][["ID_Venta", "Fecha_Venta", "Cliente", "Producto", "Total_Venta", "Saldo_Pendiente", "Dias_Ultimo_Abono", "Total_Abono"]].copy()
+            cols_adeudo = [c for c in ["ID_Venta", "Fecha_Venta", "Cliente", "Producto", "Total_Venta", "Saldo_Pendiente", "Dias_Ultimo_Abono", "Total_Abono"] if c in df_mis_ventas.columns]
+            df_adeudos = df_mis_ventas[df_mis_ventas["Estado_Venta"] == "Adeudo"][cols_adeudo].copy()
             
             if not df_adeudos.empty:
                 try:
