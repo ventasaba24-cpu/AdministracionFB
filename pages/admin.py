@@ -153,12 +153,63 @@ def dialog_gestion_inventario(db, vendedor_email, prod=None):
     else:
         nombre = prod_sel
         
-    # Consulta reactiva de lotes existentes para este producto y vendedor
-    lotes_previos = db.obtener_lotes_producto_vendedor(nombre, vendedor_email) if (nombre and db) else []
+    # Función auxiliar para autoincremento seguro de lote
+    def _calcular_siguiente_lote_fallback(lotes_existentes):
+        import re
+        if not lotes_existentes:
+            return "Lote 1"
+        numeros = []
+        for l in lotes_existentes:
+            if not l:
+                continue
+            nums = re.findall(r'\d+', str(l))
+            if nums:
+                try:
+                    numeros.append(int(nums[-1]))
+                except ValueError:
+                    pass
+        if not numeros:
+            return f"Lote {len(lotes_existentes) + 1}"
+        return f"Lote {max(numeros) + 1}"
+
+    # Consulta reactiva de lotes existentes con compatibilidad total (soporta todas las versiones de database.py)
+    lotes_previos = []
+    if nombre and db:
+        if hasattr(db, 'obtener_lotes_producto_vendedor'):
+            try:
+                lotes_previos = db.obtener_lotes_producto_vendedor(nombre, vendedor_email)
+            except Exception:
+                lotes_previos = []
+        if not lotes_previos:
+            try:
+                df_inv_v = db.leer_inventario(vendedor_email=vendedor_email)
+                if not df_inv_v.empty and "nombre" in df_inv_v.columns:
+                    mask_p = df_inv_v["nombre"].astype(str).str.strip().str.lower() == str(nombre).strip().lower()
+                    sub_inv = df_inv_v[mask_p]
+                    if not sub_inv.empty:
+                        lotes_previos = [
+                            {
+                                "id": r.get("id"),
+                                "nombre": r.get("nombre"),
+                                "lote": r.get("lote", "Lote 1"),
+                                "stock": int(r.get("stock", 0)),
+                                "precio": float(r.get("precio", 0.0)),
+                                "costo_compra": float(r.get("costo_compra", 0.0)),
+                                "proveedor": r.get("proveedor", "Generico"),
+                                "fecha_ingreso": r.get("fecha_ingreso")
+                            }
+                            for _, r in sub_inv.iterrows()
+                        ]
+            except Exception:
+                lotes_previos = []
     
     if prod is None and lotes_previos:
         lotes_nombres = [l['lote'] for l in lotes_previos]
-        lote_sugerido = db.calcular_siguiente_lote(lotes_nombres)
+        lote_sugerido = (
+            db.calcular_siguiente_lote(lotes_nombres)
+            if hasattr(db, 'calcular_siguiente_lote')
+            else _calcular_siguiente_lote_fallback(lotes_nombres)
+        )
         
         items_lotes_html = "".join([
             f"<li style='margin-bottom: 3px;'><b>{l['lote']}:</b> {l['stock']} pzs en stock | Costo Prov: ${l['costo_compra']:,.2f} | Precio: ${l['precio']:,.2f}</li>"
