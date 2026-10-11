@@ -2847,6 +2847,25 @@ def show():
                 else:
                     st.info("No hay suficientes productos registrados en el sistema para realizar fusiones.")
 
+                # Mostrar Historial de Perfumes Unificados (Bitácora)
+                st.markdown("<hr style='margin: 25px 0 15px 0; border: none; border-top: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
+                st.markdown("#### 📜 Perfumes que se han Unificado (Historial)")
+                st.caption("Registro de todos los nombres duplicados que han sido fusionados y consolidados en el sistema.")
+                
+                historial_fusiones = db.obtener_historial_homologaciones()
+                if historial_fusiones:
+                    df_hist_fus = pd.DataFrame(historial_fusiones)
+                    df_display = pd.DataFrame({
+                        "Fecha y Hora": df_hist_fus["fecha"],
+                        "Variante Retirada (Origen)": df_hist_fus["nombre_retirado"],
+                        "Nombre Oficial (Destino)": df_hist_fus["nombre_oficial"],
+                        "Ventas Trasladadas": df_hist_fus["ventas_afectadas"].astype(str) + " pzs",
+                        "Stock Trasladado": df_hist_fus["stock_trasladado"].astype(str) + " pzs"
+                    })
+                    st.dataframe(df_display, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Aún no se han registrado fusiones de productos en el historial.")
+
     elif tab_activa == "📉 Gastos y Egresos":
         st.subheader("Control de Gastos y Egresos Operativos")
         st.markdown("Registra todos los gastos ajenos al costo de producto base para tener un control exacto de tu Flujo Libre.")
