@@ -4,6 +4,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import urllib.parse
+from database import serie_contiene
 
 def generar_pdf_inventario(df_inventario, nombre_vendedor):
     try:
@@ -1528,7 +1529,7 @@ def show():
                     b_admin_rent = st.text_input("🔍 Filtrar análisis por nombre de producto...", placeholder="Escribe el nombre del perfume para aislar su rentabilidad...")
 
                 if b_admin_rent:
-                    df_perfumes = df_perfumes[df_perfumes['Producto'].astype(str).str.lower().str.contains(str(b_admin_rent).lower())]
+                    df_perfumes = df_perfumes[serie_contiene(df_perfumes['Producto'], b_admin_rent)]
                     if df_perfumes.empty:
                         st.info("No hay transacciones registradas de un producto con ese nombre.")
                 
@@ -1620,11 +1621,10 @@ def show():
                     busq_adeudos = st.text_input("🔍 Buscar deudor, vendedor o producto...", placeholder="Escribe para filtrar la lista...")
 
                 if busq_adeudos:
-                    str_b = str(busq_adeudos).lower()
                     df_adeudos = df_adeudos[
-                        df_adeudos["Cliente"].astype(str).str.lower().str.contains(str_b) |
-                        df_adeudos["Nombre_Vendedor"].astype(str).str.lower().str.contains(str_b) |
-                        df_adeudos["Producto"].astype(str).str.lower().str.contains(str_b)
+                        serie_contiene(df_adeudos["Cliente"], busq_adeudos) |
+                        serie_contiene(df_adeudos["Nombre_Vendedor"], busq_adeudos) |
+                        serie_contiene(df_adeudos["Producto"], busq_adeudos)
                     ]
                     
                 if df_adeudos.empty:
@@ -2080,8 +2080,7 @@ def show():
                     b_admin_inv = st.text_input("🔍 Buscar rápido en su catálogo", placeholder="¿Qué nombre de producto buscas?...")
                 
                 if b_admin_inv:
-                    str_b = str(b_admin_inv).lower()
-                    df_inventario = df_inventario[df_inventario["nombre"].astype(str).str.lower().str.contains(str_b)]
+                    df_inventario = df_inventario[serie_contiene(df_inventario["nombre"], b_admin_inv)]
                     
                     if df_inventario.empty:
                         st.warning("❌ Ese producto no existe en su catálogo.")
@@ -2119,11 +2118,10 @@ def show():
                 busq_abono = st.text_input("🔍 Filtro Rápido (Opcional)", placeholder="Escribe el nombre del cliente o del producto para recortar la lista... (Ej: Juan, Yara)")
                 
                 if busq_abono:
-                    t_abono = str(busq_abono).lower()
                     df_deudores = df_deudores[
-                        df_deudores["Cliente"].astype(str).str.lower().str.contains(t_abono) |
-                        df_deudores["Producto"].astype(str).str.lower().str.contains(t_abono) |
-                        df_deudores["ID_Venta"].astype(str).str.lower().str.contains(t_abono)
+                        serie_contiene(df_deudores["Cliente"], busq_abono) |
+                        serie_contiene(df_deudores["Producto"], busq_abono) |
+                        serie_contiene(df_deudores["ID_Venta"], busq_abono)
                     ]
                 
                 if df_deudores.empty:
@@ -2160,26 +2158,46 @@ def show():
                         st.markdown("<hr style='margin: 8px 0px;'>", unsafe_allow_html=True)
                     
                     import datetime
-                    with st.form("abono_form"):
-                        monto_abono = st.number_input("Monto Recibido", min_value=1.0, max_value=float(info['Saldo_Pendiente']), step=100.0)
+                    saldo_max = float(info['Saldo_Pendiente'])
+                    
+                    with st.form(f"abono_form_{venta_buscada}"):
+                        monto_abono = st.number_input(
+                            "Monto Recibido ($)", 
+                            min_value=0.0, 
+                            max_value=saldo_max, 
+                            value=0.0,
+                            step=50.0,
+                            format="%.2f",
+                            key=f"input_abono_{venta_buscada}",
+                            help="Escribe la cantidad exacta que recibiste del cliente."
+                        )
                         
                         col1, col2 = st.columns(2)
                         with col1:
-                            metodo_pago = st.selectbox("Método de Pago", ["Efectivo", "Transferencia", "Tarjeta"])
+                            metodo_pago = st.selectbox("Método de Pago", ["Efectivo", "Transferencia", "Tarjeta"], key=f"metodo_abono_{venta_buscada}")
                         with col2:
-                            fecha_pago = st.date_input("Fecha del Abono", datetime.datetime.now().date())
+                            fecha_pago = st.date_input("Fecha del Abono", datetime.datetime.now().date(), key=f"fecha_abono_{venta_buscada}")
                             
-                        btn_abonar = st.form_submit_button("Confirmar Abono ($)")
+                        if monto_abono > 0:
+                            saldo_post = max(0.0, saldo_max - monto_abono)
+                            st.caption(f"💵 **Abono:** :green[**${monto_abono:,.2f}**] ➔ Saldo resultante: **${saldo_post:,.2f}**")
+                            
+                        btn_abonar = st.form_submit_button("Confirmar Abono ($)", type="primary")
                         
                         if btn_abonar:
-                            # Ensamblamos la fecha ingresada con la hora actual
-                            fecha_dt = datetime.datetime.combine(fecha_pago, datetime.datetime.now().time())
-                            exito, msj = db.registrar_abono(int(venta_buscada), monto_abono, metodo_pago, fecha_dt)
-                            if exito:
-                                st.success(f"Abono por ${monto_abono:,.2f} registrado exitosamente.")
-                                st.rerun()
+                            if monto_abono <= 0:
+                                st.error("⚠️ Ingresa un monto mayor a $0.00 para registrar el abono.")
+                            elif monto_abono > saldo_max:
+                                st.error(f"⚠️ El abono no puede superar el saldo pendiente (${saldo_max:,.2f}).")
                             else:
-                                st.error(msj)
+                                # Ensamblamos la fecha ingresada con la hora actual
+                                fecha_dt = datetime.datetime.combine(fecha_pago, datetime.datetime.now().time())
+                                exito, msj = db.registrar_abono(int(venta_buscada), monto_abono, metodo_pago, fecha_dt)
+                                if exito:
+                                    st.success(f"✅ Abono de ${monto_abono:,.2f} registrado exitosamente para {info['Cliente']}.")
+                                    st.rerun()
+                                else:
+                                    st.error(msj)
             else:
                 st.success("¡Excelente! No hay ninguna cuenta con saldo pendiente por cobrar en el sistema.")
         else:
@@ -2520,10 +2538,10 @@ def show():
                 
                 if termino:
                     df_filtro = df_filtro[
-                        df_filtro["Cliente"].astype(str).str.lower().str.contains(termino) |
-                        df_filtro["Nombre_Vendedor"].astype(str).str.lower().str.contains(termino) |
-                        df_filtro["ID_Venta"].astype(str).str.lower().str.contains(termino) |
-                        df_filtro["Producto"].astype(str).str.lower().str.contains(termino)
+                        serie_contiene(df_filtro["Cliente"], termino) |
+                        serie_contiene(df_filtro["Nombre_Vendedor"], termino) |
+                        serie_contiene(df_filtro["ID_Venta"], termino) |
+                        serie_contiene(df_filtro["Producto"], termino)
                     ]
                 
                 # Si activó ver ceros o está buscando, mostramos todos los resultados. 
@@ -2590,11 +2608,11 @@ def show():
                 
                 if termino:
                     df_filtro = df_ab_enrich[
-                        df_ab_enrich["id_abono"].astype(str).str.lower().str.contains(termino) |
-                        df_ab_enrich["venta_id"].astype(str).str.lower().str.contains(termino) |
-                        df_ab_enrich["monto_abono"].astype(str).str.lower().str.contains(termino) |
-                        df_ab_enrich.get("Cliente", pd.Series(dtype=str)).astype(str).str.lower().str.contains(termino) |
-                        df_ab_enrich.get("Nombre_Vendedor", pd.Series(dtype=str)).astype(str).str.lower().str.contains(termino)
+                        serie_contiene(df_ab_enrich["id_abono"], termino) |
+                        serie_contiene(df_ab_enrich["venta_id"], termino) |
+                        serie_contiene(df_ab_enrich["monto_abono"], termino) |
+                        serie_contiene(df_ab_enrich.get("Cliente", pd.Series(dtype=str)), termino) |
+                        serie_contiene(df_ab_enrich.get("Nombre_Vendedor", pd.Series(dtype=str)), termino)
                     ]
                 
                 # Acotar resultados 
@@ -2770,14 +2788,13 @@ def show():
             
             # Filtrar por texto de búsqueda en tiempo real
             if busqueda_ventas.strip():
-                b_str = busqueda_ventas.strip().lower()
                 search_corpus = (
                     df_filtradas["Cliente"].fillna("").astype(str) + " " +
                     df_filtradas["Nombre_Vendedor"].fillna("").astype(str) + " " +
                     df_filtradas["Producto"].fillna("").astype(str) + " " +
                     df_filtradas["ID_Venta"].fillna("").astype(str)
-                ).str.lower()
-                df_mostrar = df_filtradas[search_corpus.str.contains(b_str, regex=False, na=False)]
+                )
+                df_mostrar = df_filtradas[serie_contiene(search_corpus, busqueda_ventas)]
             else:
                 df_mostrar = df_filtradas
             
