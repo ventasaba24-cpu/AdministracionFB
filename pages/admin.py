@@ -919,7 +919,7 @@ def show():
     except:
         df_gastos = pd.DataFrame() # Fallback temporal si la tabla no se crea a tiempo
     
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
+    pestanas = [
         "📊 KPIs Mensuales", 
         "💡 Inteligencia Financiera & GMROI",
         "👑 Clientes VIP & Morosidad",
@@ -930,15 +930,52 @@ def show():
         "📉 Gastos y Egresos", 
         "🛍️ Ventas", 
         "🎭 Simular Usuario"
-    ])
+    ]
 
-    with tab2:
+    st.markdown("""
+    <style>
+        div[data-testid="stRadio"] > div[role="radiogroup"] {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            background: #f8fafc;
+            padding: 8px;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+            margin-bottom: 20px;
+        }
+        div[data-testid="stRadio"] label {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            padding: 6px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+        div[data-testid="stRadio"] label:hover {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    tab_activa = st.radio(
+        "Módulos Administrativos",
+        pestanas,
+        index=0,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="admin_tab_selector"
+    )
+
+    if tab_activa == "💡 Inteligencia Financiera & GMROI":
         render_tab_inteligencia(db)
 
-    with tab3:
+    elif tab_activa == "👑 Clientes VIP & Morosidad":
         render_tab_clientes_vips(db, df_todas)
 
-    with tab1:
+    elif tab_activa == "📊 KPIs Mensuales":
         st.subheader("Indicadores Clave de Desempeño")
         
         # --- SECCIÓN: RESPALDOS Y SEGURIDAD ---
@@ -946,20 +983,25 @@ def show():
             st.markdown("Genera copias de seguridad de toda la base de datos en tiempo real.")
             b_col1, b_col2 = st.columns(2)
             with b_col1:
-                try:
-                    from backup import generar_excel_respaldo_completo
-                    excel_data = generar_excel_respaldo_completo(db)
+                if st.button("📦 Preparar Respaldo Excel", use_container_width=True, key="btn_prep_excel"):
+                    with st.spinner("Generando archivo Excel de respaldo..."):
+                        try:
+                            from backup import generar_excel_respaldo_completo
+                            st.session_state["excel_backup_data"] = generar_excel_respaldo_completo(db)
+                            st.success("✅ Archivo Excel listo para descargar.")
+                        except Exception as e_bk:
+                            st.error(f"Error preparando Excel: {e_bk}")
+                
+                if st.session_state.get("excel_backup_data"):
                     import datetime
                     nom_f = f"Respaldo_FB_Catalogo_{datetime.datetime.now().strftime('%Y-%m-%d')}.xlsx"
                     st.download_button(
                         label="📥 Descargar Respaldo Completo (Excel)",
-                        data=excel_data,
+                        data=st.session_state["excel_backup_data"],
                         file_name=nom_f,
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
-                except Exception as e_bk:
-                    st.error(f"Error preparando Excel: {e_bk}")
             with b_col2:
                 if st.button("☁️ Sincronizar Respaldo a Google Drive Ahora", use_container_width=True):
                     with st.spinner("Subiendo respaldo a tu Google Drive..."):
@@ -1481,8 +1523,8 @@ def show():
                 
                 try:
                     from st_keyup import st_keyup
-                    b_admin_rent = st_keyup("🔍 Filtrar análisis por nombre de producto...", placeholder="Escribe el nombre del perfume para aislar su rentabilidad...", key="b_rent_keyup")
-                except ImportError:
+                    b_admin_rent = st_keyup("🔍 Filtrar análisis por nombre de producto...", placeholder="Escribe el nombre del perfume para aislar su rentabilidad...", key="b_rent_keyup", debounce=350)
+                except (ImportError, TypeError):
                     b_admin_rent = st.text_input("🔍 Filtrar análisis por nombre de producto...", placeholder="Escribe el nombre del perfume para aislar su rentabilidad...")
 
                 if b_admin_rent:
@@ -1573,8 +1615,8 @@ def show():
             if not df_adeudos.empty:
                 try:
                     from st_keyup import st_keyup
-                    busq_adeudos = st_keyup("🔍 Buscar deudor, vendedor o producto...", placeholder="Escribe para filtrar la lista...", key="b_adeudos_keyup")
-                except ImportError:
+                    busq_adeudos = st_keyup("🔍 Buscar deudor, vendedor o producto...", placeholder="Escribe para filtrar la lista...", key="b_adeudos_keyup", debounce=350)
+                except (ImportError, TypeError):
                     busq_adeudos = st.text_input("🔍 Buscar deudor, vendedor o producto...", placeholder="Escribe para filtrar la lista...")
 
                 if busq_adeudos:
@@ -1687,7 +1729,7 @@ def show():
         else:
             st.info("No hay ventas registradas aún.")
 
-    with tab4:
+    elif tab_activa == "📦 Inventario":
         st.subheader("💡 Inteligencia de Compras y Rotación de Stock")
         st.markdown("Analiza la velocidad de salida de tus perfumes en tiempo real según el período de tiempo que elijas.")
         
@@ -2033,8 +2075,8 @@ def show():
             if not df_inventario.empty:
                 try:
                     from st_keyup import st_keyup
-                    b_admin_inv = st_keyup("🔍 Buscar rápido en su catálogo", placeholder="¿Qué nombre de producto buscas?...", key=f"b_inv_vnd")
-                except ImportError:
+                    b_admin_inv = st_keyup("🔍 Buscar rápido en su catálogo", placeholder="¿Qué nombre de producto buscas?...", key=f"b_inv_vnd", debounce=350)
+                except (ImportError, TypeError):
                     b_admin_inv = st.text_input("🔍 Buscar rápido en su catálogo", placeholder="¿Qué nombre de producto buscas?...")
                 
                 if b_admin_inv:
@@ -2064,7 +2106,7 @@ def show():
         else:
             st.warning("No hay vendedores registrados en el sistema.")
 
-    with tab5:
+    elif tab_activa == "💵 Abonos/Pagos":
         st.subheader("Registrar Nuevo Abono a Cuenta")
         # Desplegable inteligente de deudores
         # df_todas lo reusamos de arriba
@@ -2178,7 +2220,7 @@ def show():
         else:
             st.info("No hay ventas en el sistema.")
 
-    with tab6:
+    elif tab_activa == "✉️ Vendedores":
         st.subheader("Invitar Nuevo Vendedor al Sistema")
         st.markdown("Registra al vendedor y envíale automáticamente su acceso al correo de Gmail.")
 
@@ -2460,7 +2502,7 @@ def show():
         else:
             st.info("Aún no tienes vendedores registrados en el sistema.")
 
-    with tab7:
+    elif tab_activa == "📝 Correcciones":
         st.subheader("🕵️ Buscador Inteligente para Correcciones")
         st.markdown("Busca cualquier registro rápidamente para modificarlo o eliminarlo permanentemente del sistema sin dejar basura ni descuadrar tus inventarios.")
         tipo_correccion = st.radio("¿Qué tipo de registro deseas corregir?", ["Ventas", "Abonos"], horizontal=True)
@@ -2604,7 +2646,7 @@ def show():
                 else:
                     st.warning("No se encontró ningún Abono coincidente.")
 
-    with tab8:
+    elif tab_activa == "📉 Gastos y Egresos":
         st.subheader("Control de Gastos y Egresos Operativos")
         st.markdown("Registra todos los gastos ajenos al costo de producto base para tener un control exacto de tu Flujo Libre.")
         
@@ -2666,7 +2708,11 @@ def show():
                     with st.expander(f"💸 {row['Fecha']} | {row['Concepto']} - ${row['Monto']:,.2f}"):
                         st.write(f"**Categoría:** {row['Categoria']}")
                         if row['Tiene_Foto']:
-                            st.image(row['Foto_Bytes'], caption="Ticket de Comprobación", width='stretch')
+                            foto_b = db.obtener_archivo_gasto(row['ID'], "ticket")
+                            if foto_b:
+                                st.image(foto_b, caption="Ticket de Comprobación", width='stretch')
+                            else:
+                                st.info("Sin evidencia fotográfica.")
                         else:
                             st.info("Sin evidencia fotográfica.")
                             
@@ -2677,7 +2723,7 @@ def show():
             else:
                 st.info("Aún no tienes gastos registrados.")
 
-    with tab9:
+    elif tab_activa == "🛍️ Ventas":
         st.subheader("🛍️ Buscador y Gestión de Ventas")
         st.markdown("Consulta y busca el historial de **ventas activas con saldo** o **ventas cerradas y liquidadas al 100%**.")
         
@@ -2852,7 +2898,7 @@ def show():
         else:
             st.info("No hay ventas registradas en el sistema todavía.")
 
-    with tab10:
+    elif tab_activa == "🎭 Simular Usuario":
         st.subheader("🎭 Modo Simulación de Usuarios (Impersonation)")
         st.markdown("Selecciona a cualquier Vendedor o Contador para **iniciar sesión temporalmente como ellos**. Podrás ver todo exactamente como ellos lo ven desde sus dispositivos, e incluso registrar ventas o hacer cambios en su nombre.")
         
