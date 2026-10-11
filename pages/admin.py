@@ -2674,6 +2674,19 @@ def show():
                 st.success(st.session_state.pop("mensaje_exito_fusion"))
             st.markdown("Unifica productos registrados con nombres ligeramente distintos (por ejemplo: `LATTAFA KHAMRAH UNISEX 100 ml` y `LATTAFA KHAMRAH 100 ml`). Esta herramienta **consolida todas las ventas pasadas y suma el stock en un solo perfume oficial**, corrigiendo inmediatamente el Top 10 y los reportes.")
             
+            with st.expander("🛠️ Herramienta de Recuperación: Restaurar 'LATTAFA YARA WOMEN 100 ml'", expanded=True):
+                st.markdown("""
+                **¿Detectaste que 'LATTAFA YARA WOMEN 100 ml' se unificó indebidamente con 'YARA TOUS'?**
+                Presiona este botón para devolver de inmediato el Yara Clásico al inventario de Luz Cibrián con sus 2 lotes (1 pz y 5 pzs a $820.00) y corregir el stock de Yara Tous.
+                """)
+                if st.button("🔄 Ejecutar Restauración Inmediata de LATTAFA YARA WOMEN", type="primary", key="btn_restaurar_yara"):
+                    ok_r, msj_r = db.restaurar_lattafa_yara_clasico()
+                    if ok_r:
+                        st.session_state["mensaje_exito_fusion"] = msj_r
+                        st.rerun()
+                    else:
+                        st.error(msj_r)
+
             sub_modo = st.radio("Método de Trabajo:", ["🤖 Sugerencias Inteligentes de Duplicados", "🛠️ Fusión Manual"], horizontal=True, key="modo_homologacion")
             
             if sub_modo == "🤖 Sugerencias Inteligentes de Duplicados":
@@ -2835,6 +2848,14 @@ def show():
                         if nuevo_nombre_custom.strip():
                             nombre_destino_final = nuevo_nombre_custom.strip()
                     
+                    # Verificación de seguridad de precios
+                    inv_o = df_inv_global[df_inv_global["nombre"] == origen_man] if not df_inv_global.empty and "nombre" in df_inv_global else pd.DataFrame()
+                    inv_d = df_inv_global[df_inv_global["nombre"] == nombre_destino_final] if not df_inv_global.empty and "nombre" in df_inv_global else pd.DataFrame()
+                    pr_o = float(inv_o["precio"].mean()) if not inv_o.empty and "precio" in inv_o else 0.0
+                    pr_d = float(inv_d["precio"].mean()) if not inv_d.empty and "precio" in inv_d else 0.0
+                    if pr_o > 0 and pr_d > 0 and abs(pr_o - pr_d) > 25:
+                        st.error(f"🛑 **¡Atención a los Precios!** '{origen_man}' tiene precio de lista de **${pr_o:,.2f}**, mientras que '{nombre_destino_final}' cuesta **${pr_d:,.2f}**. Si son aromas o versiones distintas (flankers), NO los fusiones.")
+
                     st.warning(f"⚠️ **Atención:** Todas las ventas pasadas y piezas de inventario de **'{origen_man}'** se trasladarán permanentemente a **'{nombre_destino_final}'**.")
                     
                     if st.button("🔗 Confirmar Fusión de Productos", type="primary", key="btn_confirmar_manual"):
