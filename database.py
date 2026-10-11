@@ -1617,7 +1617,7 @@ class DatabaseHandler:
             for v in ventas_afectadas:
                 v.producto_nombre = nombre_destino_clean
 
-            # 2. Actualizar inventario (productos)
+            # 2. Actualizar inventario (productos) - LÓGICA NO DESTRUCTIVA: CERO DELETE
             prods_origen = session.query(Producto).filter(
                 or_(
                     Producto.nombre == nombre_origen,
@@ -1628,20 +1628,29 @@ class DatabaseHandler:
             stock_trasladado = 0
             for p_orig in prods_origen:
                 stock_trasladado += (p_orig.stock or 0)
+                # Verificar si ya existe una fila con el MISMO nombre, lote y vendedor
                 p_dest = session.query(Producto).filter(
                     func.trim(func.lower(Producto.nombre)) == nombre_destino_clean.lower(),
                     Producto.lote == p_orig.lote,
                     Producto.vendedor_email == p_orig.vendedor_email
                 ).first()
-                if p_dest:
-                    p_dest.stock = (p_dest.stock or 0) + (p_orig.stock or 0)
-                    if (p_dest.costo_compra or 0) == 0 and (p_orig.costo_compra or 0) > 0:
-                        p_dest.costo_compra = p_orig.costo_compra
-                    if (p_dest.precio or 0) == 0 and (p_orig.precio or 0) > 0:
-                        p_dest.precio = p_orig.precio
-                    session.delete(p_orig)
-                else:
-                    p_orig.nombre = nombre_destino_clean
+                if p_dest and p_dest.id != p_orig.id:
+                    # Conflicto de lote: NO borrar la fila p_orig.
+                    # Renombrar el lote para preservar todas sus piezas, costos de compra y fecha original
+                    lote_base = p_orig.lote or "Lote 1"
+                    sufijo = 2
+                    nuevo_lote = f"{lote_base}-B"
+                    while session.query(Producto).filter(
+                        func.trim(func.lower(Producto.nombre)) == nombre_destino_clean.lower(),
+                        Producto.lote == nuevo_lote,
+                        Producto.vendedor_email == p_orig.vendedor_email
+                    ).first():
+                        nuevo_lote = f"{lote_base}-{sufijo}"
+                        sufijo += 1
+                    p_orig.lote = nuevo_lote
+
+                # Cambiar el nombre al oficial (sin borrar el registro)
+                p_orig.nombre = nombre_destino_clean
 
             # 3. Consolidar catalogo_productos
             cat_orig = session.query(CatalogoProducto).filter(
@@ -1657,7 +1666,8 @@ class DatabaseHandler:
                 cat_dest = CatalogoProducto(nombre=nombre_destino_clean, categoria="General")
                 session.add(cat_dest)
             for c_o in cat_orig:
-                session.delete(c_o)
+                if c_o.id != cat_dest.id:
+                    session.delete(c_o)
 
             # 4. Registrar en bitácora de homologaciones
             try:
@@ -1675,7 +1685,7 @@ class DatabaseHandler:
 
             session.commit()
             limpiar_cache_sistema()
-            return True, f"¡Fusión exitosa! Se unificaron {cant_ventas} venta(s) y {stock_trasladado} pieza(s) de stock de '{nombre_origen_clean}' en el producto oficial '{nombre_destino_clean}'."
+            return True, f"¡Nombre estandarizado con éxito! Se actualizaron {cant_ventas} venta(s) y {len(prods_origen)} lote(s) ({stock_trasladado} pzs de inventario) al nombre oficial '{nombre_destino_clean}' sin alterar piezas ni costos."
         except Exception as e:
             session.rollback()
             return False, f"Error al fusionar productos: {str(e)}"
