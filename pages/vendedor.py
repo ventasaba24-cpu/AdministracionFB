@@ -64,6 +64,19 @@ def show():
     from database import DatabaseHandler
     db = DatabaseHandler()
 
+    # Carga centralizada y única de datos (aprovecha la caché en memoria)
+    df_todas = db.obtener_tabla_ventas_completa()
+    df_abonos = db.leer_abonos()
+    user_email = st.session_state.get("user_email", "")
+    user_name = st.session_state.get("user_name", "")
+
+    if not df_todas.empty:
+        df_mis = df_todas[(df_todas["Vendedor_Email"] == user_email) | (df_todas["Nombre_Vendedor"] == user_name)].copy()
+        df_mis["Fecha_Venta_DT"] = pd.to_datetime(df_mis["Fecha_Venta"], format="%d-%b-%Y", errors='coerce')
+        df_mis["Fecha_Cobro_Comision_DT"] = pd.to_datetime(df_mis["Fecha_Cobro_Comision"], format="%d-%b-%Y", errors='coerce')
+    else:
+        df_mis = pd.DataFrame()
+
     col1, col2 = st.columns(2)
 
     with col1:
@@ -82,8 +95,8 @@ def show():
                 
                 try:
                     from st_keyup import st_keyup
-                    b_inv = st_keyup("🔍 Buscar en inventario", placeholder="Escribe parte del nombre...", key="busq_inv_keyup")
-                except ImportError:
+                    b_inv = st_keyup("🔍 Buscar en inventario", placeholder="Escribe parte del nombre...", key="busq_inv_keyup", debounce=350)
+                except (ImportError, TypeError):
                     b_inv = st.text_input("🔍 Buscar en inventario", placeholder="Escribe parte del nombre... (Presiona Enter para buscar)")
                     
                 if b_inv:
@@ -205,10 +218,8 @@ def show():
         st.markdown("---")
         st.subheader("💳 Retiro de Comisiones")
         
-        # Obtenemos datos recientes
-        df_update = db.obtener_tabla_ventas_completa()
-        if not df_update.empty:
-            df_mis = df_update[df_update["Nombre_Vendedor"] == st.session_state.user_name]
+        # Reutilizamos df_mis ya filtrado al inicio
+        if not df_mis.empty:
             # Filtrar las ventas que ESTAN pagadas pero NO se han cobrado su comision
             df_por_cobrar = df_mis[(df_mis["Estado_Venta"] == "Pagado") & (df_mis["Comision_Fisicamente_Cobrada"] == False)]
             
@@ -246,8 +257,7 @@ def show():
         st.subheader("🔔 Abonos Recientes (Últimos 7 días)")
         st.markdown("Revisa los pagos que tus clientes han realizado durante esta semana.")
         
-        df_abonos = db.leer_abonos()
-        if not df_abonos.empty and 'df_mis' in locals() and not df_mis.empty:
+        if not df_abonos.empty and not df_mis.empty:
             # Mexico City is UTC-6 (sin horario de verano ya)
             df_abonos['fecha_dt'] = pd.to_datetime(df_abonos['fecha_abono'])
             df_abonos['fecha_local'] = df_abonos['fecha_dt'].dt.date
@@ -308,9 +318,6 @@ def show():
     with col2:
         st.subheader("💰 Mis Métricas Desglosadas")
         
-        df_todas = db.obtener_tabla_ventas_completa()
-        df_abonos = db.leer_abonos()
-        
         # === MÉTRICAS GLOBALES (Siempre visibles) ===
         st.markdown("##### 🌎 Panorama Global")
         
@@ -319,8 +326,8 @@ def show():
         ventas_totales_global = 0.0
         cartera_total_global = 0.0
         
-        if not df_todas.empty:
-            df_mis_ventas = df_todas[df_todas["Nombre_Vendedor"] == st.session_state.user_name].copy()
+        df_mis_ventas = df_mis
+        if not df_mis_ventas.empty:
             ventas_totales_global = df_mis_ventas["Total_Venta"].sum()
             
             df_pagadas = df_mis_ventas[df_mis_ventas["Estado_Venta"] == "Pagado"]
@@ -458,8 +465,8 @@ def show():
             if not df_adeudos.empty:
                 try:
                     from st_keyup import st_keyup
-                    b_adeudo = st_keyup("🔍 Buscar Cliente o Producto", placeholder="Escribe para buscar en tus cuentas por cobrar...", key="busq_adeudos_keyup")
-                except ImportError:
+                    b_adeudo = st_keyup("🔍 Buscar Cliente o Producto", placeholder="Escribe para buscar en tus cuentas por cobrar...", key="busq_adeudos_keyup", debounce=350)
+                except (ImportError, TypeError):
                     b_adeudo = st.text_input("🔍 Buscar Cliente o Producto", placeholder="Escribe para buscar en tus cuentas por cobrar... (Presiona Enter)")
                 
                 if b_adeudo:
