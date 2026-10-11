@@ -1486,3 +1486,142 @@ class DatabaseHandler:
         finally:
             session.close()
 
+    def obtener_todos_los_nombres_productos(self):
+        """Devuelve todos los nombres únicos existentes en ventas, inventario y catálogo."""
+        session = self.get_session()
+        try:
+            from sqlalchemy import distinct
+            n_ventas = [r[0] for r in session.query(distinct(Venta.producto_nombre)).all() if r[0] and str(r[0]).strip()]
+            n_inv = [r[0] for r in session.query(distinct(Producto.nombre)).all() if r[0] and str(r[0]).strip()]
+            n_cat = [r[0] for r in session.query(distinct(CatalogoProducto.nombre)).all() if r[0] and str(r[0]).strip()]
+            todos = sorted(list(set(n_ventas + n_inv + n_cat)), key=lambda s: str(s).lower())
+            return todos
+        finally:
+            session.close()
+
+    def detectar_duplicados_sugeridos(self, umbral=0.72):
+        """Detecta pares de nombres de productos que probablemente son variantes del mismo perfume."""
+        import difflib
+        nombres = self.obtener_todos_los_nombres_productos()
+        if len(nombres) < 2:
+            return []
+        
+        session = self.get_session()
+        try:
+            ventas_map = dict(session.query(Venta.producto_nombre, func.count(Venta.id)).group_by(Venta.producto_nombre).all())
+            stock_map = dict(session.query(Producto.nombre, func.sum(Producto.stock)).group_by(Producto.nombre).all())
+        finally:
+            session.close()
+
+        parejas = []
+        ya_vistos = set()
+
+        for i, n1 in enumerate(nombres):
+            tok1 = normalizar_texto(n1)
+            words1 = set(tok1.split())
+            for j in range(i + 1, len(nombres)):
+                n2 = nombres[j]
+                par_key = tuple(sorted([n1, n2]))
+                if par_key in ya_vistos:
+                    continue
+                
+                tok2 = normalizar_texto(n2)
+                words2 = set(tok2.split())
+                
+                ratio = difflib.SequenceMatcher(None, tok1, tok2).ratio()
+                common_words = {w for w in (words1 & words2) if len(w) > 2}
+                total_words = {w for w in (words1 | words2) if len(w) > 2}
+                jaccard = len(common_words) / len(total_words) if total_words else 0.0
+
+                es_similar = (ratio >= umbral) or (jaccard >= 0.60 and len(common_words) >= 2)
+                
+                if es_similar:
+                    ya_vistos.add(par_key)
+                    v1 = ventas_map.get(n1, 0) or 0
+                    v2 = ventas_map.get(n2, 0) or 0
+                    s1 = stock_map.get(n1, 0) or 0
+                    s2 = stock_map.get(n2, 0) or 0
+                    
+                    if v1 >= v2:
+                        sug_dest, sug_orig = n1, n2
+                        sv_d, sv_o = v1, v2
+                        st_d, st_o = s1, s2
+                    else:
+                        sug_dest, sug_orig = n2, n1
+                        sv_d, sv_o = v2, v1
+                        st_d, st_o = s2, s1
+                        
+                    parejas.append({
+                        'origen': sug_orig,
+                        'destino': sug_dest,
+                        'similitud': round(max(ratio, jaccard) * 100, 1),
+                        'ventas_origen': sv_o,
+                        'stock_origen': int(st_o),
+                        'ventas_destino': sv_d,
+                        'stock_destino': int(st_d)
+                    })
+        
+        parejas.sort(key=lambda x: (x['ventas_origen'] + x['stock_origen'], x['similitud']), reverse=True)
+        return parejas
+
+    def homologar_fusionar_productos(self, nombre_origen: str, nombre_destino: str):
+        """
+        Fusiona e integra dos nombres de producto en uno solo (nombre_destino).
+        1. Actualiza todas las ventas históricas de nombre_origen a nombre_destino.
+        2. Mueve y unifica el stock y registros de inventario de nombre_origen a nombre_destino.
+        3. Consolida catalogo_productos eliminando la variante duplicada.
+        4. Limpia la memoria caché del sistema.
+        """
+        nombre_origen = str(nombre_origen).strip()
+        nombre_destino = str(nombre_destino).strip()
+        if not nombre_origen or not nombre_destino:
+            return False, "Los nombres de producto no pueden estar vacíos."
+        if nombre_origen == nombre_destino:
+            return False, "El producto origen y destino no pueden ser idénticos."
+
+        session = self.get_session()
+        try:
+            # 1. Actualizar ventas
+            ventas_afectadas = session.query(Venta).filter(Venta.producto_nombre == nombre_origen).all()
+            cant_ventas = len(ventas_afectadas)
+            for v in ventas_afectadas:
+                v.producto_nombre = nombre_destino
+
+            # 2. Actualizar inventario (productos) respetando UniqueConstraint('nombre', 'lote', 'vendedor_email')
+            prods_origen = session.query(Producto).filter(Producto.nombre == nombre_origen).all()
+            stock_trasladado = 0
+            for p_orig in prods_origen:
+                stock_trasladado += (p_orig.stock or 0)
+                p_dest = session.query(Producto).filter_by(
+                    nombre=nombre_destino,
+                    lote=p_orig.lote,
+                    vendedor_email=p_orig.vendedor_email
+                ).first()
+                if p_dest:
+                    p_dest.stock = (p_dest.stock or 0) + (p_orig.stock or 0)
+                    if (p_dest.costo_compra or 0) == 0 and (p_orig.costo_compra or 0) > 0:
+                        p_dest.costo_compra = p_orig.costo_compra
+                    if (p_dest.precio or 0) == 0 and (p_orig.precio or 0) > 0:
+                        p_dest.precio = p_orig.precio
+                    session.delete(p_orig)
+                else:
+                    p_orig.nombre = nombre_destino
+
+            # 3. Consolidar catalogo_productos
+            cat_orig = session.query(CatalogoProducto).filter(func.lower(CatalogoProducto.nombre) == nombre_origen.lower()).all()
+            cat_dest = session.query(CatalogoProducto).filter(func.lower(CatalogoProducto.nombre) == nombre_destino.lower()).first()
+            if not cat_dest:
+                cat_dest = CatalogoProducto(nombre=nombre_destino, categoria="General")
+                session.add(cat_dest)
+            for c_o in cat_orig:
+                session.delete(c_o)
+
+            session.commit()
+            limpiar_cache_sistema()
+            return True, f"¡Fusión exitosa! Se unificaron {cant_ventas} ventas y {stock_trasladado} piezas de stock de '{nombre_origen}' en el producto oficial '{nombre_destino}'."
+        except Exception as e:
+            session.rollback()
+            return False, f"Error al fusionar productos: {str(e)}"
+        finally:
+            session.close()
+
