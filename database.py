@@ -11,6 +11,26 @@ from sqlalchemy.sql import func
 def get_mexico_time():
     return datetime.datetime.now(ZoneInfo("America/Mexico_City")).replace(tzinfo=None)
 
+import unicodedata
+
+def normalizar_texto(texto) -> str:
+    """Normaliza texto eliminando acentos, diacríticos y convirtiendo a minúsculas para búsquedas insensibles a tildes."""
+    if texto is None:
+        return ""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", str(texto).strip().lower())
+        if unicodedata.category(c) != "Mn"
+    )
+
+def serie_contiene(serie: pd.Series, termino: str) -> pd.Series:
+    """Retorna máscara booleana evaluando si la serie contiene el término ignorando acentos y mayúsculas."""
+    if not termino:
+        return pd.Series(True, index=serie.index)
+    term_norm = normalizar_texto(termino)
+    if not term_norm:
+        return pd.Series(True, index=serie.index)
+    return serie.fillna("").astype(str).map(normalizar_texto).str.contains(term_norm, regex=False, na=False)
+
 Base = declarative_base()
 
 # --- MODELOS DE DATOS ---
