@@ -2721,6 +2721,65 @@ def show():
                 
                 todos_prods = db.obtener_todos_los_nombres_productos()
                 if len(todos_prods) >= 2:
+                    df_inv_global = db.leer_inventario()
+                    
+                    def render_ficha_inspeccion(prod_nombre, es_origen=True):
+                        if not prod_nombre:
+                            return
+                        # Inventario
+                        inv = df_inv_global[df_inv_global["nombre"] == prod_nombre] if not df_inv_global.empty and "nombre" in df_inv_global else pd.DataFrame()
+                        stock_total = int(inv["stock"].sum()) if not inv.empty and "stock" in inv else 0
+                        lotes_str = ", ".join(inv["lote"].dropna().unique().astype(str)) if not inv.empty and "lote" in inv else "Lote 1"
+                        fechas_inv = [str(f)[:10] for f in inv["fecha_ingreso"].dropna().unique() if str(f).strip() and str(f) != "None"] if not inv.empty and "fecha_ingreso" in inv else []
+                        fecha_reg = fechas_inv[0] if fechas_inv else "Sin fecha"
+                        precio_lista = float(inv["precio"].mean()) if not inv.empty and "precio" in inv else 0.0
+
+                        # Ventas
+                        vnt = df_todas[df_todas["Producto"] == prod_nombre] if not df_todas.empty and "Producto" in df_todas else pd.DataFrame()
+                        ventas_pzs = int(vnt["Cantidad"].sum()) if not vnt.empty and "Cantidad" in vnt else 0
+                        total_dinero = float(vnt["Total_Venta"].sum()) if not vnt.empty and "Total_Venta" in vnt else 0.0
+
+                        color_borde = "#ef4444" if es_origen else "#10b981"
+                        bg_color = "#fff1f2" if es_origen else "#f0fdf4"
+                        titulo_rol = "Variante que se Retirará" if es_origen else "Nombre Oficial a Conservar"
+                        badge_color = "#991b1b" if es_origen else "#166534"
+
+                        st.markdown(f"""
+                        <div style='background: {bg_color}; padding: 12px 14px; border-radius: 8px; border-left: 4px solid {color_borde}; margin-top: 8px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); font-size: 13px;'>
+                            <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;'>
+                                <span style='font-weight: 700; color: {badge_color}; font-size: 13px;'>📋 {titulo_rol}</span>
+                                <span style='background: rgba(0,0,0,0.06); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;'>Stock: {stock_total} pzs</span>
+                            </div>
+                            <div style='color: #334155; line-height: 1.5; font-size: 12px;'>
+                                <b>📅 Alta Bodega:</b> {fecha_reg} | <b>Lote:</b> {lotes_str}<br>
+                                <b>💰 Precio Lista:</b> ${precio_lista:,.2f} | <b>🛒 Total Ventas:</b> {ventas_pzs} pzs (${total_dinero:,.2f})
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        if not vnt.empty:
+                            with st.expander(f"👥 Ver {len(vnt)} venta(s) registrada(s) y compradores", expanded=True):
+                                for _, r in vnt.iterrows():
+                                    f_venta = str(r.get("Fecha_Venta", ""))[:10]
+                                    cl = r.get("Cliente", "Desconocido")
+                                    tot = float(r.get("Total_Venta", 0.0))
+                                    vnd = r.get("Nombre_Vendedor", "Vendedora")
+                                    fol = r.get("ID_Venta", "")
+                                    cant = int(r.get("Cantidad", 1))
+                                    st.markdown(f"""
+                                    <div style='background: #ffffff; padding: 6px 10px; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 5px; font-size: 12px; display: flex; justify-content: space-between; align-items: center;'>
+                                        <div>
+                                            <b>👤 {cl}</b> <span style='color: #64748b; font-size: 11px;'>({f_venta})</span><br>
+                                            <span style='color: #64748b; font-size: 11px;'>👩‍💼 {vnd} | Folio #{fol} ({cant} pz)</span>
+                                        </div>
+                                        <div style='text-align: right;'>
+                                            <b style='color: #047857; font-size: 13px;'>${tot:,.2f}</b>
+                                        </div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                        else:
+                            st.caption("ℹ️ *Sin ventas registradas en el historial con este nombre.*")
+
                     col_m1, col_m2 = st.columns(2)
                     with col_m1:
                         origen_man = st.selectbox(
@@ -2728,6 +2787,8 @@ def show():
                             options=todos_prods,
                             key="sel_man_origen"
                         )
+                        render_ficha_inspeccion(origen_man, es_origen=True)
+
                     with col_m2:
                         opciones_dest = [p for p in todos_prods if p != origen_man]
                         destino_man = st.selectbox(
@@ -2735,6 +2796,7 @@ def show():
                             options=opciones_dest,
                             key="sel_man_destino"
                         )
+                        render_ficha_inspeccion(destino_man, es_origen=False)
                     
                     usar_nuevo_nombre = st.checkbox("✍️ Escribir un nombre oficial nuevo (si deseas rebautizarlo)")
                     nombre_destino_final = destino_man
