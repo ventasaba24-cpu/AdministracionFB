@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
+from database import serie_contiene
 
 # Habilitar diálogos de Streamlit (Pop-up)
 if hasattr(st, "dialog"):
@@ -100,8 +101,7 @@ def show():
                     b_inv = st.text_input("🔍 Buscar en inventario", placeholder="Escribe parte del nombre... (Presiona Enter para buscar)")
                     
                 if b_inv:
-                    busq_txt = str(b_inv).lower()
-                    df_mostrar = df_mostrar[df_mostrar["nombre"].astype(str).str.lower().str.contains(busq_txt)]
+                    df_mostrar = df_mostrar[serie_contiene(df_mostrar["nombre"], b_inv)]
                 
                 if not df_mostrar.empty:
                     html_cards = ""
@@ -470,10 +470,9 @@ def show():
                     b_adeudo = st.text_input("🔍 Buscar Cliente o Producto", placeholder="Escribe para buscar en tus cuentas por cobrar... (Presiona Enter)")
                 
                 if b_adeudo:
-                    str_b = str(b_adeudo).lower()
                     df_adeudos = df_adeudos[
-                        df_adeudos["Cliente"].astype(str).str.lower().str.contains(str_b) |
-                        df_adeudos["Producto"].astype(str).str.lower().str.contains(str_b)
+                        serie_contiene(df_adeudos["Cliente"], b_adeudo) |
+                        serie_contiene(df_adeudos["Producto"], b_adeudo)
                     ]
                     if df_adeudos.empty:
                         st.info("Sin resultados para esta búsqueda.")
