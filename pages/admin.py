@@ -1895,18 +1895,24 @@ def show():
                 etiqueta_rango = f"{f_inicio.strftime('%d/%m/%Y')} al {f_fin.strftime('%d/%m/%Y')} ({num_dias}d)"
                 df_ventas_filtradas = df_ventas_rot[(df_ventas_rot['Fecha_Dt'] >= dt_ini) & (df_ventas_rot['Fecha_Dt'] < dt_fin)].copy()
 
-            # Agrupar ventas del período seleccionado
-            agrupado_ventas = df_ventas_filtradas.groupby("Producto").agg(
-                Unidades_Vendidas=("Cantidad", "sum"),
-                Ingresos_Generados=("Total_Venta", "sum"),
-                Utilidad_Generada=("Utilidad_Neta", "sum")
-            ).reset_index()
-            
-            # Ritmo semanal proporcional según los días medidos
-            agrupado_ventas["Rotacion_Semanal"] = (agrupado_ventas["Unidades_Vendidas"] / num_dias) * 7.0
+            # Selector de Meta de Abastecimiento y Cobertura
+            col_meta1, col_meta2 = st.columns([3, 2])
+            with col_meta1:
+                meta_semanas = st.select_slider(
+                    "🎯 Meta de Cobertura para Pedidos:",
+                    options=[2, 3, 4, 6],
+                    value=4,
+                    format_func=lambda x: f"{x} Semanas ({'1/2 mes' if x==2 else '1 mes' if x==4 else '1.5 meses' if x==6 else f'{x} sem'})",
+                    help="Calcula cuántas piezas pedir para cubrir las semanas de venta deseadas según tu rotación.",
+                    key="slider_meta_cobertura"
+                )
+
+            # Días de exposición real y cálculo de antigüedad PEPS (FIFO)
+            hoy_dt = pd.to_datetime(fecha_hoy)
+            primera_venta_map = df_ventas_rot.groupby("Producto")["Fecha_Dt"].min()
+            ultima_venta_map = df_ventas_rot.groupby("Producto")["Fecha_Dt"].max()
             
             df_inv_global = db.leer_inventario()
-            stock_agrupado = pd.DataFrame(columns=["nombre", "stock", "costo_compra", "fecha_ingreso", "dias_en_tienda"])
             if not df_inv_global.empty:
                 df_inv_global["stock"] = pd.to_numeric(df_inv_global["stock"], errors="coerce").fillna(0)
                 df_inv_global["costo_compra"] = pd.to_numeric(df_inv_global["costo_compra"], errors="coerce").fillna(0.0)
@@ -1914,15 +1920,50 @@ def show():
                     df_inv_global["fecha_ingreso_dt"] = pd.to_datetime(df_inv_global["fecha_ingreso"], errors="coerce")
                 else:
                     df_inv_global["fecha_ingreso_dt"] = pd.NaT
+                primer_ingreso_map = df_inv_global.groupby("nombre")["fecha_ingreso_dt"].min()
+                
+                # Antigüedad real de stock remanente (PEPS / FIFO: lote más viejo con stock positivo)
+                inv_con_stock = df_inv_global[df_inv_global["stock"] > 0]
+                if not inv_con_stock.empty:
+                    antiguedad_peps_map = inv_con_stock.groupby("nombre")["fecha_ingreso_dt"].min()
+                else:
+                    antiguedad_peps_map = pd.Series(dtype='datetime64[ns]')
+            else:
+                primer_ingreso_map = pd.Series(dtype='datetime64[ns]')
+                antiguedad_peps_map = pd.Series(dtype='datetime64[ns]')
 
+            # Agrupar ventas del período seleccionado
+            agrupado_ventas = df_ventas_filtradas.groupby("Producto").agg(
+                Unidades_Vendidas=("Cantidad", "sum"),
+                Ingresos_Generados=("Total_Venta", "sum"),
+                Utilidad_Generada=("Utilidad_Neta", "sum")
+            ).reset_index()
+            
+            # Cálculo de días efectivos para no castigar productos nuevos en ventanas largas
+            def _calc_dias_efectivos(prod_nombre):
+                f_v = primera_venta_map.get(prod_nombre, pd.NaT)
+                f_i = primer_ingreso_map.get(prod_nombre, pd.NaT)
+                fechas = [f for f in [f_v, f_i] if pd.notnull(f)]
+                if fechas:
+                    f_origen = min(fechas)
+                    dias_vida = max((hoy_dt - f_origen).days, 7)
+                    return min(num_dias, dias_vida)
+                return num_dias
+
+            agrupado_ventas["dias_efectivos"] = agrupado_ventas["Producto"].apply(_calc_dias_efectivos)
+            agrupado_ventas["Rotacion_Semanal"] = (agrupado_ventas["Unidades_Vendidas"] / agrupado_ventas["dias_efectivos"]) * 7.0
+            
+            stock_agrupado = pd.DataFrame(columns=["nombre", "stock", "costo_compra", "fecha_ingreso", "dias_en_tienda"])
+            if not df_inv_global.empty:
                 stock_agrupado = df_inv_global.groupby("nombre").agg(
                     stock=("stock", "sum"),
                     costo_compra=("costo_compra", "mean"),
                     fecha_ingreso=("fecha_ingreso_dt", "max")
                 ).reset_index()
 
-                hoy_dt = pd.to_datetime(fecha_hoy)
-                stock_agrupado["dias_en_tienda"] = (hoy_dt - stock_agrupado["fecha_ingreso"]).dt.days.fillna(999).astype(int)
+                # Asignar fecha PEPS más antigua con stock disponible para medir rezago real
+                stock_agrupado["fecha_peps"] = stock_agrupado["nombre"].map(antiguedad_peps_map)
+                stock_agrupado["dias_en_tienda"] = (hoy_dt - stock_agrupado["fecha_peps"].fillna(stock_agrupado["fecha_ingreso"])).dt.days.fillna(999).astype(int)
             
             df_inteligencia = pd.merge(stock_agrupado, agrupado_ventas, left_on="nombre", right_on="Producto", how="outer")
             df_inteligencia["Producto"] = df_inteligencia["nombre"].fillna(df_inteligencia["Producto"])
@@ -1933,7 +1974,11 @@ def show():
             df_inteligencia["Utilidad_Generada"] = df_inteligencia["Utilidad_Generada"].fillna(0.0)
             df_inteligencia["dias_en_tienda"] = df_inteligencia["dias_en_tienda"].fillna(999).astype(int)
 
-            # Métricas Avanzadas: Semanas de Cobertura (Weeks of Supply) y Sell-Through %
+            # Días desde última venta registrada en la historia (para filtrar quiebres activos vs descontinuados)
+            df_inteligencia["fecha_ult_venta"] = df_inteligencia["Producto"].map(ultima_venta_map)
+            df_inteligencia["dias_desde_ult_venta"] = (hoy_dt - df_inteligencia["fecha_ult_venta"]).dt.days.fillna(999).astype(int)
+
+            # Semanas de Cobertura y Sell-Through %
             df_inteligencia["cobertura_semanas"] = np.where(
                 df_inteligencia["Rotacion_Semanal"] > 0,
                 df_inteligencia["stock"] / df_inteligencia["Rotacion_Semanal"],
@@ -1947,28 +1992,47 @@ def show():
                 0.0
             )
 
-            # Reorden inteligente sugerido (cubrir 4 semanas de venta promedio)
+            # Reorden inteligente según meta de semanas de cobertura elegida
             df_inteligencia["reorden_sugerido"] = np.ceil(
-                (df_inteligencia["Rotacion_Semanal"] * 4.0) - df_inteligencia["stock"]
+                (df_inteligencia["Rotacion_Semanal"] * float(meta_semanas)) - df_inteligencia["stock"]
             ).clip(lower=1).astype(int)
+
+            # Identificación Pareto 80/20 (Top Rentable)
+            df_sorted_u = df_inteligencia.sort_values(by="Utilidad_Generada", ascending=False).copy()
+            total_u = df_sorted_u["Utilidad_Generada"].sum()
+            if total_u > 0:
+                cumsum_u = df_sorted_u["Utilidad_Generada"].cumsum()
+                top_80_set = set(df_sorted_u[cumsum_u <= (total_u * 0.80)]["Producto"])
+            else:
+                top_80_set = set()
+            df_inteligencia["es_top_rentable"] = df_inteligencia["Producto"].isin(top_80_set) & (df_inteligencia["Utilidad_Generada"] > 0)
 
             # 1. Novedades / En Vitrina (<= 21 días en catálogo y 0 ventas)
             cond_novedades = (df_inteligencia["stock"] > 0) & (df_inteligencia["dias_en_tienda"] <= 21) & (df_inteligencia["Unidades_Vendidas"] == 0)
             novedades = df_inteligencia[cond_novedades].sort_values(by="dias_en_tienda", ascending=True).copy()
 
-            # 2. Alertas Quiebre (Stock <= 1 o cobertura < 1.5 semanas)
-            cond_quiebre = (
+            # 2. Alertas Quiebre ACTIVO (Stock <= 1 con demanda activa en <= 60 días o ritmo >= 0.3)
+            cond_demanda_activa = (df_inteligencia["dias_desde_ult_venta"] <= 60) | (df_inteligencia["Rotacion_Semanal"] >= 0.3)
+            cond_quiebre_activo = (
                 ((df_inteligencia["cobertura_semanas"] < 1.5) & (df_inteligencia["Rotacion_Semanal"] >= 0.5)) |
-                ((df_inteligencia["stock"] <= 1) & (df_inteligencia["Unidades_Vendidas"] > 0))
+                ((df_inteligencia["stock"] <= 1) & (df_inteligencia["Unidades_Vendidas"] > 0) & cond_demanda_activa)
             )
-            alertas_quiebre = df_inteligencia[cond_quiebre].sort_values(by=["stock", "Rotacion_Semanal"], ascending=[True, False]).copy()
+            alertas_quiebre = df_inteligencia[cond_quiebre_activo].sort_values(by=["stock", "Rotacion_Semanal", "Utilidad_Generada"], ascending=[True, False, False]).copy()
+
+            # Quiebres Inactivos / Catálogo Agotado sin demanda reciente
+            cond_quiebre_inactivo = (
+                (df_inteligencia["stock"] == 0) & 
+                (df_inteligencia["Unidades_Vendidas"] > 0) & 
+                (~cond_quiebre_activo)
+            )
+            quiebres_inactivos = df_inteligencia[cond_quiebre_inactivo].sort_values(by="dias_desde_ult_venta", ascending=True).copy()
 
             # 3. Alta Rotación (Velocidad >= 1.0 pz/sem o Sell-Through >= 40% con al menos 2 ventas)
             cond_alta = (
                 (df_inteligencia["Rotacion_Semanal"] >= 1.0) |
                 ((df_inteligencia["sell_through"] >= 40.0) & (df_inteligencia["Unidades_Vendidas"] >= 2))
             )
-            top_rotacion = df_inteligencia[cond_alta].sort_values(by="Rotacion_Semanal", ascending=False).copy()
+            top_rotacion = df_inteligencia[cond_alta].sort_values(by=["Rotacion_Semanal", "Utilidad_Generada"], ascending=[False, False]).copy()
 
             # 4. Inventario Lento / Estancado (> 30 días sin ventas o cobertura > 10 semanas)
             cond_lentos = (
@@ -1979,7 +2043,7 @@ def show():
                     ((df_inteligencia["cobertura_semanas"] > 10.0) & (df_inteligencia["stock"] >= 2) & (df_inteligencia["Rotacion_Semanal"] < 0.3))
                 )
             )
-            lentos = df_inteligencia[cond_lentos].sort_values(by="stock", ascending=False).copy()
+            lentos = df_inteligencia[cond_lentos].sort_values(by=["stock", "dias_en_tienda"], ascending=[False, False]).copy()
             
             c1, c2, c3, c4 = st.columns(4)
             with c1:
@@ -1987,9 +2051,10 @@ def show():
                 if not top_rotacion.empty:
                     html_rot = "<div style='max-height: 380px; overflow-y: auto; padding-right: 4px;'>"
                     for _, r in top_rotacion.iterrows():
+                        badge_pareto = " <span style='background: #fef08a; color: #854d0e; font-size: 10px; padding: 1px 5px; border-radius: 4px; font-weight: 700;'>👑 Top 80/20</span>" if r.get('es_top_rentable') else ""
                         html_rot += (
                             f"<div style='background-color: #f0fdf4; padding: 10px 12px; border-radius: 8px; border-left: 4px solid #16a34a; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>"
-                            f"<div style='font-size: 13px; font-weight: bold; color: #14532d; margin-bottom: 3px;'>{r['Producto']}</div>"
+                            f"<div style='font-size: 13px; font-weight: bold; color: #14532d; margin-bottom: 3px;'>{r['Producto']}{badge_pareto}</div>"
                             f"<div style='font-size: 11px; color: #166534; display: flex; justify-content: space-between;'>"
                             f"<span>{etiqueta_rango}: <b>{int(r['Unidades_Vendidas'])} pzs</b></span>"
                             f"<span>Stock: <b>{int(r['stock'])} pzs</b></span>"
@@ -2004,18 +2069,24 @@ def show():
                 else:
                     st.info(f"Sin estrellas en {etiqueta_rango}.")
                     
+            # Presupuesto estimado para surtir quiebres activos
+            presupuesto_quiebres = (alertas_quiebre["reorden_sugerido"] * alertas_quiebre["costo_compra"]).sum() if not alertas_quiebre.empty else 0.0
+
             with c2:
-                st.markdown(f"##### 🚨 Quiebre ({len(alertas_quiebre)})")
+                st.markdown(f"##### 🚨 Quiebre Activo ({len(alertas_quiebre)})")
+                if presupuesto_quiebres > 0:
+                    st.caption(f"💰 **Pedido ({meta_semanas} sem):** ~${presupuesto_quiebres:,.2f}")
                 if not alertas_quiebre.empty:
                     html_q = "<div style='max-height: 380px; overflow-y: auto; padding-right: 4px;'>"
                     for _, r in alertas_quiebre.iterrows():
                         pzs_pedir = int(r['reorden_sugerido'])
                         est_pedido = pzs_pedir * r['costo_compra'] if r['costo_compra'] > 0 else 0.0
                         ped_txt = f" (~${est_pedido:,.2f})" if est_pedido > 0 else ""
-                        cob_txt = f"{r['cobertura_semanas']:.1f} sem" if r['cobertura_semanas'] < 900 else "Agotándose"
+                        cob_txt = f"{r['cobertura_semanas']:.1f} sem" if r['cobertura_semanas'] < 900 else "Agotado"
+                        badge_pareto = " <span style='background: #fef08a; color: #854d0e; font-size: 10px; padding: 1px 5px; border-radius: 4px; font-weight: 700;'>👑 Prioritario</span>" if r.get('es_top_rentable') else ""
                         html_q += (
                             f"<div style='background-color: #fff1f2; padding: 10px 12px; border-radius: 8px; border-left: 4px solid #f43f5e; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>"
-                            f"<div style='font-size: 13px; font-weight: bold; color: #9f1239; margin-bottom: 3px;'>{r['Producto']}</div>"
+                            f"<div style='font-size: 13px; font-weight: bold; color: #9f1239; margin-bottom: 3px;'>{r['Producto']}{badge_pareto}</div>"
                             f"<div style='font-size: 11px; color: #be123c; display: flex; justify-content: space-between;'>"
                             f"<span>Stock: <b style='color: #dc2626;'>{int(r['stock'])} pzs</b></span>"
                             f"<span>Cob: <b>{cob_txt}</b></span>"
@@ -2028,7 +2099,14 @@ def show():
                     html_q += "</div>"
                     st.markdown(html_q, unsafe_allow_html=True)
                 else:
-                    st.success("✅ Todo tu stock está sano.")
+                    st.success("✅ Todo tu stock activo está sano.")
+                
+                # Desplegable discreto para no perder de vista los agotados inactivos
+                if not quiebres_inactivos.empty:
+                    with st.expander(f"💤 Catálogo Agotado Inactivo ({len(quiebres_inactivos)})", expanded=False):
+                        st.caption("Perfumes en stock 0 sin ventas en los últimos 60 días (pedidos bajo encargo):")
+                        for _, r in quiebres_inactivos.iterrows():
+                            st.markdown(f"• **{r['Producto']}** (últ. venta hace {r['dias_desde_ult_venta']}d)")
 
             with c3:
                 st.markdown(f"##### ✨ Novedades ({len(novedades)})")
@@ -2069,7 +2147,7 @@ def show():
                             f"<span>Rota: <b>{r['Rotacion_Semanal']:.2f}/sem</b></span>"
                             f"</div>"
                             f"<div style='font-size: 11px; color: #b45309; margin-top: 3px; font-weight: bold; border-top: 1px dashed #fef08a; padding-top: 3px;'>"
-                            f"💡 Atrapado{dias_str}:{cap_txt}"
+                            f"💡 Lote rezagado{dias_str}:{cap_txt}"
                             f"</div>"
                             f"</div>"
                         )
