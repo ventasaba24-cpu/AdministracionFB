@@ -153,10 +153,54 @@ def dialog_gestion_inventario(db, vendedor_email, prod=None):
     else:
         nombre = prod_sel
         
-    lote = st.text_input("Lote ID", value=prod['lote'] if prod is not None and 'lote' in prod else "Lote 1")
+    # Consulta reactiva de lotes existentes para este producto y vendedor
+    lotes_previos = db.obtener_lotes_producto_vendedor(nombre, vendedor_email) if (nombre and db) else []
     
+    if prod is None and lotes_previos:
+        lotes_nombres = [l['lote'] for l in lotes_previos]
+        lote_sugerido = db.calcular_siguiente_lote(lotes_nombres)
+        
+        items_lotes_html = "".join([
+            f"<li style='margin-bottom: 3px;'><b>{l['lote']}:</b> {l['stock']} pzs en stock | Costo Prov: ${l['costo_compra']:,.2f} | Precio: ${l['precio']:,.2f}</li>"
+            for l in lotes_previos
+        ])
+        st.markdown(f"""
+        <div style='background-color: #f8fafc; border: 1px solid #cbd5e1; border-left: 4px solid #3b82f6; border-radius: 8px; padding: 10px 14px; margin-top: 8px; margin-bottom: 12px; font-size: 13px;'>
+            <div style='font-weight: 700; color: #1e293b; margin-bottom: 4px;'>📦 Lotes registrados previamente en esta bodega:</div>
+            <ul style='margin: 0; padding-left: 18px; color: #475569; font-size: 12px;'>
+                {items_lotes_html}
+            </ul>
+            <div style='color: #0284c7; font-weight: 700; margin-top: 6px; font-size: 12px;'>
+                ✨ Autoincremento Inteligente: Asignando automáticamente <b>{lote_sugerido}</b> para nuevo resurtido.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        lote_def = lote_sugerido
+        precio_def = float(lotes_previos[-1]['precio']) if lotes_previos[-1]['precio'] > 0 else 0.0
+        costo_def = float(lotes_previos[-1]['costo_compra']) if lotes_previos[-1]['costo_compra'] > 0 else 0.0
+        prov_def = lotes_previos[-1]['proveedor'] if lotes_previos[-1].get('proveedor') else "Generico"
+    elif prod is not None:
+        lote_def = prod.get('lote', 'Lote 1')
+        precio_def = float(prod.get('precio', 0.0))
+        costo_def = float(prod.get('costo_compra', 0.0))
+        prov_def = prod.get('proveedor', 'Generico')
+    else:
+        lote_def = "Lote 1"
+        precio_def = 0.0
+        costo_def = 0.0
+        prov_def = "Generico"
+
+    key_sufijo = f"_{prod['id']}" if prod is not None else f"_{abs(hash(nombre)) % 100000}"
+    lote = st.text_input("Lote ID", value=lote_def, key=f"input_lote{key_sufijo}")
+    
+    # Validación Anticolisión Visual en Tiempo Real
+    lotes_existentes_nombres = [l['lote'].strip().lower() for l in lotes_previos if (prod is None or l['id'] != prod.get('id'))]
+    es_colision = (lote.strip().lower() in lotes_existentes_nombres)
+    if es_colision:
+        st.error(f"🛑 **Conflicto de Lote:** Ya existe el '{lote}' registrado para este producto en esta bodega. Cambia el lote para evitar errores.")
+
     # Manejo Inteligente de Fecha de Ingreso:
-    # Si es producto nuevo, o tenía stock 0 (resurtido), o cambió de nombre, sugerir la fecha de HOY
     stock_previo = int(prod['stock']) if prod is not None and 'stock' in prod and pd.notnull(prod['stock']) else 0
     es_reabastecido_o_nuevo = (prod is None or stock_previo <= 0)
     
@@ -172,26 +216,28 @@ def dialog_gestion_inventario(db, vendedor_email, prod=None):
             
     col_f1, col_f2 = st.columns([3, 2])
     with col_f1:
-        fecha_ingreso_val = st.date_input("📅 Fecha de Ingreso de Inventario", value=fecha_def, key="input_fecha_ingreso_dialog")
+        fecha_ingreso_val = st.date_input("📅 Fecha de Ingreso de Inventario", value=fecha_def, key=f"input_fecha_ingreso_dialog{key_sufijo}")
     with col_f2:
         st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-        btn_hoy = st.button("🔄 Poner Fecha de Hoy", key="btn_fecha_hoy_inv", help="Actualiza la fecha de ingreso al día de hoy para que cuente como nuevo lote / resurtido.")
+        btn_hoy = st.button("🔄 Poner Fecha de Hoy", key=f"btn_fecha_hoy_inv{key_sufijo}", help="Actualiza la fecha de ingreso al día de hoy para que cuente como nuevo lote / resurtido.")
         if btn_hoy:
             fecha_ingreso_val = datetime.date.today()
             
     if es_reabastecido_o_nuevo and prod is not None:
         st.caption("✨ *Este producto no tenía stock disponible. Se sugiere la fecha de hoy para registrar el nuevo ingreso/resurtido.*")
     
-    precio = st.number_input("Precio Final Público ($)", min_value=0.0, value=float(prod['precio']) if prod is not None else 0.0, step=50.0)
-    costo = st.number_input("Costo Compra Prov ($)", min_value=0.0, value=float(prod.get('costo_compra', 0.0)) if prod is not None else 0.0, step=50.0)
-    proveedor = st.text_input("Proveedor", value=prod.get('proveedor', 'Generico') if prod is not None else "Generico")
-    stock = st.number_input("Unidades Físicas (Stock)", min_value=0, value=int(prod['stock']) if prod is not None else 0, step=1)
+    precio = st.number_input("Precio Final Público ($)", min_value=0.0, value=precio_def, step=50.0, key=f"input_precio{key_sufijo}")
+    costo = st.number_input("Costo Compra Prov ($)", min_value=0.0, value=costo_def, step=50.0, key=f"input_costo{key_sufijo}")
+    proveedor = st.text_input("Proveedor", value=prov_def, key=f"input_prov{key_sufijo}")
+    stock = st.number_input("Unidades Físicas (Stock)", min_value=0, value=int(prod['stock']) if prod is not None else 0, step=1, key=f"input_stock{key_sufijo}")
     
     col1, col2 = st.columns(2)
     with col1:
         if st.button("💾 Guardar", type="primary", width="stretch"):
             if not nombre:
                 st.error("El nombre es requerido.")
+            elif es_colision:
+                st.error(f"No se puede guardar: el lote '{lote}' ya existe para '{nombre}' en esta bodega. Por favor asígnale un lote diferente.")
             else:
                 # Si el nombre cambió respecto a la fila original reutilizada, o el stock pasó de 0 a positivo, garantizar fecha actualizada
                 nombre_cambio = (prod is not None and prod.get('nombre') and prod.get('nombre').strip().lower() != nombre.strip().lower())
