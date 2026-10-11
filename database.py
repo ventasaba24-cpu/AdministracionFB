@@ -1720,15 +1720,19 @@ class DatabaseHandler:
 
     def restaurar_lattafa_yara_clasico(self):
         """
-        Restaura el perfume LATTAFA YARA WOMEN 100 ml al inventario y catálogo de Luz Cibrián.
-        - Lote 1: 1 pz, $820.00 (Fecha: 2026-08-14)
-        - Lote 2: 5 pzs, $820.00 (Fecha: 2026-10-03)
-        - Ajusta el stock de LATTAFA YARA TOUS WOMEN 100 ml [Lote 2] que absorbió esas piezas.
+        Restaura el perfume LATTAFA YARA WOMEN 100 ml con base en el respaldo de las 09:14 AM:
+        1. Devuelve las 13 ventas históricas de clientes de Yara Rosa que se habían cambiado a Tous.
+        2. Restablece sus 2 lotes originales en el inventario de Luz Cibrián:
+           - Lote 1: 1 pz, $820.00, costo $440.00 (Fecha: 2026-08-14)
+           - Lote 2: 5 pzs, $820.00, costo $409.23 (Fecha: 2026-10-03)
+        3. Restablece el inventario de LATTAFA YARA TOUS WOMEN 100 ml:
+           - Lote 1: 0 pzs (costo $389.00)
+           - Lote 2: 2 pzs (costo $364.09)
+        4. Asegura la presencia en CatalogoProducto y limpia la memoria caché.
         """
         import datetime
         session = self.get_session()
         try:
-            # 1. Obtener el email de Luz Cibrián
             usr_luz = session.query(Usuario).filter(
                 func.lower(Usuario.nombre).like('%luz%cibrian%')
             ).first()
@@ -1736,7 +1740,7 @@ class DatabaseHandler:
 
             nombre_yara_oficial = "LATTAFA YARA WOMEN 100 ml"
 
-            # 2. Asegurar en CatalogoProducto
+            # 1. Asegurar en CatalogoProducto
             cat = session.query(CatalogoProducto).filter(
                 func.trim(func.lower(CatalogoProducto.nombre)) == nombre_yara_oficial.lower()
             ).first()
@@ -1744,7 +1748,16 @@ class DatabaseHandler:
                 cat = CatalogoProducto(nombre=nombre_yara_oficial, categoria="General")
                 session.add(cat)
 
-            # 3. Restaurar Lote 1 (1 pz, $820.00, 2026-08-14)
+            # 2. Restaurar las 13 ventas históricas que fueron renombradas a Tous
+            folios_yara_women = [19, 34, 38, 41, 42, 43, 55, 85, 106, 113, 201, 224, 229]
+            ventas_corregidas = 0
+            for vid in folios_yara_women:
+                v = session.query(Venta).filter_by(id=vid).first()
+                if v:
+                    v.producto_nombre = nombre_yara_oficial
+                    ventas_corregidas += 1
+
+            # 3. Restaurar Lote 1 de Yara Women (1 pz, $820.00, costo $440.00, 2026-08-14)
             p_lote1 = session.query(Producto).filter(
                 func.trim(func.lower(Producto.nombre)) == nombre_yara_oficial.lower(),
                 Producto.lote == "Lote 1",
@@ -1757,17 +1770,18 @@ class DatabaseHandler:
                     lote="Lote 1",
                     stock=1,
                     precio=820.00,
-                    costo_compra=380.00,
-                    proveedor="Distribuidor",
-                    fecha_ingreso=datetime.datetime(2026, 8, 14, 12, 0, 0)
+                    costo_compra=440.00,
+                    proveedor="Generico (Autoguardado)",
+                    fecha_ingreso=datetime.datetime(2026, 8, 14, 0, 0, 0)
                 )
                 session.add(p_lote1)
             else:
                 p_lote1.stock = 1
                 p_lote1.precio = 820.00
-                p_lote1.fecha_ingreso = datetime.datetime(2026, 8, 14, 12, 0, 0)
+                p_lote1.costo_compra = 440.00
+                p_lote1.fecha_ingreso = datetime.datetime(2026, 8, 14, 0, 0, 0)
 
-            # 4. Restaurar Lote 2 (5 pzs, $820.00, 2026-10-03)
+            # 4. Restaurar Lote 2 de Yara Women (5 pzs, $820.00, costo $409.23, 2026-10-03)
             p_lote2 = session.query(Producto).filter(
                 func.trim(func.lower(Producto.nombre)) == nombre_yara_oficial.lower(),
                 Producto.lote == "Lote 2",
@@ -1780,35 +1794,43 @@ class DatabaseHandler:
                     lote="Lote 2",
                     stock=5,
                     precio=820.00,
-                    costo_compra=380.00,
-                    proveedor="Distribuidor",
-                    fecha_ingreso=datetime.datetime(2026, 10, 3, 12, 0, 0)
+                    costo_compra=409.23,
+                    proveedor="Generico",
+                    fecha_ingreso=datetime.datetime(2026, 10, 3, 0, 0, 0)
                 )
                 session.add(p_lote2)
             else:
                 p_lote2.stock = 5
                 p_lote2.precio = 820.00
-                p_lote2.fecha_ingreso = datetime.datetime(2026, 10, 3, 12, 0, 0)
+                p_lote2.costo_compra = 409.23
+                p_lote2.fecha_ingreso = datetime.datetime(2026, 10, 3, 0, 0, 0)
 
-            # 5. Ajustar LATTAFA YARA TOUS WOMEN 100 ml [Lote 2] descontando las 5 piezas que absorbió (de 7 a 2)
-            p_tous_lote2 = session.query(Producto).filter(
+            # 5. Restablecer LATTAFA YARA TOUS WOMEN 100 ml a sus stocks originales del respaldo
+            # Lote 1 de Tous: 0 piezas
+            p_tous_l1 = session.query(Producto).filter(
+                func.trim(func.lower(Producto.nombre)) == "lattafa yara tous women 100 ml",
+                Producto.lote == "Lote 1",
+                Producto.vendedor_email == email_luz
+            ).first()
+            if p_tous_l1:
+                p_tous_l1.stock = 0
+
+            # Lote 2 de Tous: 2 piezas
+            p_tous_l2 = session.query(Producto).filter(
                 func.trim(func.lower(Producto.nombre)) == "lattafa yara tous women 100 ml",
                 Producto.lote == "Lote 2",
                 Producto.vendedor_email == email_luz
             ).first()
-            if p_tous_lote2:
-                if p_tous_lote2.stock >= 5:
-                    p_tous_lote2.stock = p_tous_lote2.stock - 5
-                else:
-                    p_tous_lote2.stock = 0
+            if p_tous_l2:
+                p_tous_l2.stock = 2
 
             # 6. Registrar en Bitácora
             try:
                 BitacoraHomologacion.__table__.create(self.engine, checkfirst=True)
                 reg_b = BitacoraHomologacion(
-                    nombre_retirado="[REVERSIÓN] Separación de piezas absorbidas por Tous",
+                    nombre_retirado="[REVERSIÓN EXACTA] Restauración de Yara Rosa y Tous a respaldo matutino",
                     nombre_oficial=nombre_yara_oficial,
-                    ventas_afectadas=0,
+                    ventas_afectadas=ventas_corregidas,
                     stock_trasladado=6,
                     fecha=get_mexico_time()
                 )
@@ -1818,7 +1840,7 @@ class DatabaseHandler:
 
             session.commit()
             limpiar_cache_sistema()
-            return True, "✅ ¡Restauración exitosa! 'LATTAFA YARA WOMEN 100 ml' ha sido devuelto al inventario de Luz Cibrián con sus 2 lotes (1 pz y 5 pzs a $820.00) y el stock de Yara Tous ha sido ajustado."
+            return True, f"✅ ¡Restauración exitosa! Se restablecieron {ventas_corregidas} ventas de clientes a 'LATTAFA YARA WOMEN 100 ml', sus 2 lotes de inventario (1 pz a $440 y 5 pzs a $409.23 con precio $820.00) y Yara Tous volvió a sus 2 piezas originales."
         except Exception as e:
             session.rollback()
             return False, f"Error al restaurar: {str(e)}"
