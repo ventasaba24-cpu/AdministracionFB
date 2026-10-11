@@ -4,7 +4,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import urllib.parse
-from database import serie_contiene
+from database import serie_contiene, normalizar_texto
 
 def generar_pdf_inventario(df_inventario, nombre_vendedor):
     try:
@@ -2784,15 +2784,43 @@ def show():
 
                     col_m1, col_m2 = st.columns(2)
                     with col_m1:
+                        try:
+                            from st_keyup import st_keyup
+                            f_busq_orig = st_keyup("🔍 Filtrar variante a retirar:", placeholder="Escribe para filtrar (ej: 212, 9pm)...", key="txt_busq_orig", debounce=350)
+                        except (ImportError, TypeError):
+                            f_busq_orig = st.text_input("🔍 Filtrar variante a retirar:", placeholder="Escribe para filtrar (ej: 212, 9pm)...", key="txt_busq_orig")
+                        
+                        norm_bo = normalizar_texto(f_busq_orig)
+                        opciones_orig = [p for p in todos_prods if norm_bo in normalizar_texto(p)] if norm_bo else todos_prods
+                        if not opciones_orig:
+                            st.warning(f"No hay coincidencias para '{f_busq_orig}'. Mostrando todos.")
+                            opciones_orig = todos_prods
+                        elif norm_bo and len(opciones_orig) < len(todos_prods):
+                            st.caption(f"🎯 *Mostrando {len(opciones_orig)} coincidencia(s)*")
+
                         origen_man = st.selectbox(
                             "1. Variante duplicada que deseas retirar:",
-                            options=todos_prods,
+                            options=opciones_orig,
                             key="sel_man_origen"
                         )
                         render_ficha_inspeccion(origen_man, es_origen=True)
 
                     with col_m2:
-                        opciones_dest = [p for p in todos_prods if p != origen_man]
+                        try:
+                            from st_keyup import st_keyup
+                            f_busq_dest = st_keyup("🔍 Filtrar nombre oficial:", placeholder="Escribe para filtrar (ej: vip, afnan)...", key="txt_busq_dest", debounce=350)
+                        except (ImportError, TypeError):
+                            f_busq_dest = st.text_input("🔍 Filtrar nombre oficial:", placeholder="Escribe para filtrar (ej: vip, afnan)...", key="txt_busq_dest")
+
+                        base_dest = [p for p in todos_prods if p != origen_man]
+                        norm_bd = normalizar_texto(f_busq_dest)
+                        opciones_dest = [p for p in base_dest if norm_bd in normalizar_texto(p)] if norm_bd else base_dest
+                        if not opciones_dest:
+                            st.warning(f"No hay coincidencias para '{f_busq_dest}'. Mostrando todos.")
+                            opciones_dest = base_dest
+                        elif norm_bd and len(opciones_dest) < len(base_dest):
+                            st.caption(f"🎯 *Mostrando {len(opciones_dest)} coincidencia(s)*")
+
                         destino_man = st.selectbox(
                             "2. Nombre oficial que debe quedar:",
                             options=opciones_dest,
