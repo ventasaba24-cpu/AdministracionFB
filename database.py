@@ -1490,9 +1490,9 @@ class DatabaseHandler:
         """Devuelve todos los nombres únicos existentes en ventas, inventario y catálogo."""
         session = self.get_session()
         try:
-            n_ventas = [r[0] for r in session.query(Venta.producto_nombre).distinct().all() if r[0] and str(r[0]).strip()]
-            n_inv = [r[0] for r in session.query(Producto.nombre).distinct().all() if r[0] and str(r[0]).strip()]
-            n_cat = [r[0] for r in session.query(CatalogoProducto.nombre).distinct().all() if r[0] and str(r[0]).strip()]
+            n_ventas = [str(r[0]).strip() for r in session.query(Venta.producto_nombre).distinct().all() if r[0] and str(r[0]).strip()]
+            n_inv = [str(r[0]).strip() for r in session.query(Producto.nombre).distinct().all() if r[0] and str(r[0]).strip()]
+            n_cat = [str(r[0]).strip() for r in session.query(CatalogoProducto.nombre).distinct().all() if r[0] and str(r[0]).strip()]
             todos = sorted(list(set(n_ventas + n_inv + n_cat)), key=lambda s: str(s).lower())
             return todos
         finally:
@@ -1571,30 +1571,44 @@ class DatabaseHandler:
         3. Consolida catalogo_productos eliminando la variante duplicada.
         4. Limpia la memoria caché del sistema.
         """
-        nombre_origen = str(nombre_origen).strip()
-        nombre_destino = str(nombre_destino).strip()
-        if not nombre_origen or not nombre_destino:
+        nombre_origen_clean = str(nombre_origen).strip()
+        nombre_destino_clean = str(nombre_destino).strip()
+        if not nombre_origen_clean or not nombre_destino_clean:
             return False, "Los nombres de producto no pueden estar vacíos."
-        if nombre_origen == nombre_destino:
+        if nombre_origen_clean.lower() == nombre_destino_clean.lower():
             return False, "El producto origen y destino no pueden ser idénticos."
 
         session = self.get_session()
         try:
-            # 1. Actualizar ventas
-            ventas_afectadas = session.query(Venta).filter(Venta.producto_nombre == nombre_origen).all()
+            from sqlalchemy import or_, func
+
+            # 1. Actualizar ventas (buscando con y sin espacios, exacto o con trim insensible a mayúsculas)
+            ventas_afectadas = session.query(Venta).filter(
+                or_(
+                    Venta.producto_nombre == nombre_origen,
+                    Venta.producto_nombre == nombre_origen_clean,
+                    func.trim(func.lower(Venta.producto_nombre)) == nombre_origen_clean.lower()
+                )
+            ).all()
             cant_ventas = len(ventas_afectadas)
             for v in ventas_afectadas:
-                v.producto_nombre = nombre_destino
+                v.producto_nombre = nombre_destino_clean
 
-            # 2. Actualizar inventario (productos) respetando UniqueConstraint('nombre', 'lote', 'vendedor_email')
-            prods_origen = session.query(Producto).filter(Producto.nombre == nombre_origen).all()
+            # 2. Actualizar inventario (productos)
+            prods_origen = session.query(Producto).filter(
+                or_(
+                    Producto.nombre == nombre_origen,
+                    Producto.nombre == nombre_origen_clean,
+                    func.trim(func.lower(Producto.nombre)) == nombre_origen_clean.lower()
+                )
+            ).all()
             stock_trasladado = 0
             for p_orig in prods_origen:
                 stock_trasladado += (p_orig.stock or 0)
-                p_dest = session.query(Producto).filter_by(
-                    nombre=nombre_destino,
-                    lote=p_orig.lote,
-                    vendedor_email=p_orig.vendedor_email
+                p_dest = session.query(Producto).filter(
+                    func.trim(func.lower(Producto.nombre)) == nombre_destino_clean.lower(),
+                    Producto.lote == p_orig.lote,
+                    Producto.vendedor_email == p_orig.vendedor_email
                 ).first()
                 if p_dest:
                     p_dest.stock = (p_dest.stock or 0) + (p_orig.stock or 0)
@@ -1604,20 +1618,27 @@ class DatabaseHandler:
                         p_dest.precio = p_orig.precio
                     session.delete(p_orig)
                 else:
-                    p_orig.nombre = nombre_destino
+                    p_orig.nombre = nombre_destino_clean
 
             # 3. Consolidar catalogo_productos
-            cat_orig = session.query(CatalogoProducto).filter(func.lower(CatalogoProducto.nombre) == nombre_origen.lower()).all()
-            cat_dest = session.query(CatalogoProducto).filter(func.lower(CatalogoProducto.nombre) == nombre_destino.lower()).first()
+            cat_orig = session.query(CatalogoProducto).filter(
+                or_(
+                    CatalogoProducto.nombre == nombre_origen,
+                    func.trim(func.lower(CatalogoProducto.nombre)) == nombre_origen_clean.lower()
+                )
+            ).all()
+            cat_dest = session.query(CatalogoProducto).filter(
+                func.trim(func.lower(CatalogoProducto.nombre)) == nombre_destino_clean.lower()
+            ).first()
             if not cat_dest:
-                cat_dest = CatalogoProducto(nombre=nombre_destino, categoria="General")
+                cat_dest = CatalogoProducto(nombre=nombre_destino_clean, categoria="General")
                 session.add(cat_dest)
             for c_o in cat_orig:
                 session.delete(c_o)
 
             session.commit()
             limpiar_cache_sistema()
-            return True, f"¡Fusión exitosa! Se unificaron {cant_ventas} ventas y {stock_trasladado} piezas de stock de '{nombre_origen}' en el producto oficial '{nombre_destino}'."
+            return True, f"¡Fusión exitosa! Se unificaron {cant_ventas} venta(s) y {stock_trasladado} pieza(s) de stock de '{nombre_origen_clean}' en el producto oficial '{nombre_destino_clean}'."
         except Exception as e:
             session.rollback()
             return False, f"Error al fusionar productos: {str(e)}"
