@@ -226,11 +226,216 @@ def init_db_connection(default_path='sqlite:///erp_database.db'):
     SessionMaker = sessionmaker(bind=engine, expire_on_commit=False)
     return engine, SessionMaker
 
+def limpiar_cache_sistema():
+    """Limpia la memoria caché de Streamlit para reflejar cambios en tiempo real."""
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
+
+_DEMO_INITIALIZED = False
+
+@st.cache_data(ttl=180, show_spinner=False)
+def _cached_leer_inventario(vendedor_email=None):
+    _, SessionMaker = init_db_connection()
+    session = SessionMaker()
+    try:
+        query = session.query(Producto)
+        if vendedor_email:
+            usr = session.query(Usuario).filter_by(email=vendedor_email).first()
+            if usr and usr.grupo_inventario_id:
+                miembros = [u.email for u in session.query(Usuario).filter_by(grupo_inventario_id=usr.grupo_inventario_id).all()]
+                query = query.filter(Producto.vendedor_email.in_(miembros))
+            else:
+                query = query.filter_by(vendedor_email=vendedor_email)
+        df = pd.read_sql(query.statement, session.bind)
+        return df
+    finally:
+        session.close()
+
+@st.cache_data(ttl=180, show_spinner=False)
+def _cached_obtener_tabla_ventas_completa():
+    _, SessionMaker = init_db_connection()
+    session = SessionMaker()
+    try:
+        from sqlalchemy.orm import joinedload
+        ventas = session.query(Venta).options(joinedload(Venta.abonos)).all()
+        usuarios = session.query(Usuario).all()
+        user_dict = {u.email: u for u in usuarios}
+        
+        productos = session.query(Producto).all()
+        prod_dict = {(p.nombre, p.vendedor_email): p for p in productos}
+        
+        datos_procesados = []
+        for v in ventas:
+            abonos_query = v.abonos
+            total_abonos = sum([a.monto_abono for a in abonos_query]) if abonos_query else 0.0
+            
+            dias_ultimo = None
+            if abonos_query:
+                fechas_abono = [a.fecha_abono for a in abonos_query if a.fecha_abono]
+                if fechas_abono:
+                    ultimo = max(fechas_abono)
+                    diferencia = get_mexico_time() - ultimo
+                    dias_ultimo = diferencia.days
+            
+            if dias_ultimo is None:
+                if v.fecha_venta:
+                    dias_ultimo = (get_mexico_time() - v.fecha_venta).days
+                else:
+                    dias_ultimo = 0
+            
+            saldo = v.monto_total - total_abonos
+            estado = "Pagado" if saldo <= 0 else "Adeudo"
+            
+            vendedor = user_dict.get(v.vendedor_email)
+            tasa = vendedor.tasa_comision if vendedor else 0.10
+            nombre_vendedor = vendedor.nombre if vendedor else "Desconocido"
+            
+            prod = prod_dict.get((v.producto_nombre, v.vendedor_email))
+            nombre_proveedor = prod.proveedor if prod and prod.proveedor else "Desconocido"
+            
+            comision_ganada = v.monto_total * tasa
+            comision_pagada = "SI" if estado == "Pagado" else "NO"
+            
+            subtotal_sin_iva = v.monto_total / 1.16
+            iva_generado = v.monto_total - subtotal_sin_iva
+            
+            costo_unit = getattr(v, "costo_historico", 0.0) or 0.0
+            cant = getattr(v, "cantidad", 1) or 1
+            costo_bases = costo_unit * cant
+            
+            utilidad_neta = subtotal_sin_iva - costo_bases - comision_ganada
+            
+            fila = {
+                "ID_Venta": v.id,
+                "Fecha_Venta": v.fecha_venta.strftime("%d-%b-%Y") if v.fecha_venta else "",
+                "Dias_Ultimo_Abono": dias_ultimo,
+                "Nombre_Vendedor": nombre_vendedor,
+                "Vendedor_Email": v.vendedor_email,
+                "Cliente": v.cliente,
+                "Producto": v.producto_nombre,
+                "Cantidad": cant,
+                "Proveedor": nombre_proveedor,
+                "Total_Venta": v.monto_total,
+                "IVA_(16%)": iva_generado,
+                "Costo_Producto": costo_bases,
+                "Total_Abono": total_abonos,
+                "Saldo_Pendiente": saldo,
+                "Estado_Venta": estado,
+                "Comision_Generada": comision_ganada,
+                "Utilidad_Neta": utilidad_neta,
+                "Comision_Pagada": comision_pagada,
+                "Comision_Fisicamente_Cobrada": v.comision_cobrada,
+                "Fecha_Cobro_Comision": v.fecha_cobro_comision.strftime("%d-%b-%Y") if hasattr(v, "fecha_cobro_comision") and v.fecha_cobro_comision else ""
+            }
+            datos_procesados.append(fila)
+            
+        return pd.DataFrame(datos_procesados)
+    finally:
+        session.close()
+
+@st.cache_data(ttl=180, show_spinner=False)
+def _cached_leer_abonos():
+    _, SessionMaker = init_db_connection()
+    session = SessionMaker()
+    try:
+        query = session.query(Abono)
+        df = pd.read_sql(query.statement, session.bind)
+        return df
+    finally:
+        session.close()
+
+@st.cache_data(ttl=180, show_spinner=False)
+def _cached_obtener_vendedores():
+    _, SessionMaker = init_db_connection()
+    session = SessionMaker()
+    try:
+        query = session.query(Usuario).filter(Usuario.rol != "Admin")
+        df = pd.read_sql(query.statement, session.bind)
+        return df
+    finally:
+        session.close()
+
+@st.cache_data(ttl=180, show_spinner=False)
+def _cached_obtener_gastos():
+    _, SessionMaker = init_db_connection()
+    session = SessionMaker()
+    try:
+        gastos = session.query(
+            Gasto.id,
+            Gasto.concepto,
+            Gasto.monto,
+            Gasto.categoria,
+            Gasto.fecha_gasto,
+            (Gasto.ticket_foto != None).label('tiene_foto'),
+            (Gasto.factura_xml != None).label('tiene_xml'),
+            (Gasto.factura_pdf != None).label('tiene_pdf')
+        ).order_by(Gasto.fecha_gasto.desc()).all()
+        data = []
+        for g in gastos:
+            data.append({
+                "ID": g.id,
+                "Concepto": g.concepto,
+                "Monto": g.monto,
+                "Categoria": g.categoria,
+                "Fecha": g.fecha_gasto.strftime("%d-%m-%Y %H:%M") if g.fecha_gasto else "",
+                "Tiene_Foto": bool(g.tiene_foto),
+                "Foto_Bytes": None,
+                "Tiene_XML": bool(g.tiene_xml),
+                "Tiene_PDF": bool(g.tiene_pdf),
+                "XML_Bytes": None,
+                "PDF_Bytes": None
+            })
+        return pd.DataFrame(data)
+    finally:
+        session.close()
+
+@st.cache_data(ttl=180, show_spinner=False)
+def _cached_obtener_catalogo_maestro():
+    _, SessionMaker = init_db_connection()
+    session = SessionMaker()
+    try:
+        prods = session.query(CatalogoProducto).order_by(CatalogoProducto.nombre.asc()).all()
+        if not prods:
+            nombres_existentes = session.query(Producto.nombre).distinct().all()
+            for (nom,) in nombres_existentes:
+                if nom and nom.strip():
+                    c_p = CatalogoProducto(nombre=nom.strip(), categoria="General")
+                    session.add(c_p)
+            session.commit()
+            prods = session.query(CatalogoProducto).order_by(CatalogoProducto.nombre.asc()).all()
+        return [{"id": p.id, "nombre": p.nombre, "categoria": p.categoria, "descripcion": p.descripcion} for p in prods]
+    finally:
+        session.close()
+
+@st.cache_data(ttl=180, show_spinner=False)
+def _cached_obtener_grupos_inventario():
+    _, SessionMaker = init_db_connection()
+    session = SessionMaker()
+    try:
+        grupos = session.query(GrupoInventario).all()
+        resultado = []
+        for g in grupos:
+            miembros = session.query(Usuario).filter_by(grupo_inventario_id=g.id).all()
+            resultado.append({
+                "id": g.id,
+                "nombre_grupo": g.nombre_grupo,
+                "fecha_creacion": g.fecha_creacion,
+                "miembros": [{"email": m.email, "nombre": m.nombre} for m in miembros]
+            })
+        return resultado
+    finally:
+        session.close()
+
 class DatabaseHandler:
     def __init__(self):
         # Reutiliza el Pool de Conexión global guardado en RAM por Streamlit
         self.engine, self.Session = init_db_connection()
-        self.inicializar_datos_demo()
+        global _DEMO_INITIALIZED
+        if not _DEMO_INITIALIZED:
+            self.inicializar_datos_demo()
+            _DEMO_INITIALIZED = True
 
     def get_session(self):
         return self.Session()
@@ -274,20 +479,7 @@ class DatabaseHandler:
     
     def leer_inventario(self, vendedor_email=None):
         """Devuelve el inventario en formato DataFrame de Pandas. Si no se provee email, devuelve todos. Si el vendedor pertenece a un grupo de inventario compartido, incluye el stock del grupo."""
-        session = self.get_session()
-        try:
-            query = session.query(Producto)
-            if vendedor_email:
-                usr = session.query(Usuario).filter_by(email=vendedor_email).first()
-                if usr and usr.grupo_inventario_id:
-                    miembros = [u.email for u in session.query(Usuario).filter_by(grupo_inventario_id=usr.grupo_inventario_id).all()]
-                    query = query.filter(Producto.vendedor_email.in_(miembros))
-                else:
-                    query = query.filter_by(vendedor_email=vendedor_email)
-            df = pd.read_sql(query.statement, session.bind)
-            return df
-        finally:
-            session.close()
+        return _cached_leer_inventario(vendedor_email=vendedor_email)
 
     def obtener_valor_inventario(self):
         """Calcula el capital físico actual sumando (stock * costo_compra) de todos los productos."""
@@ -323,6 +515,9 @@ class DatabaseHandler:
             
             # Borramos el previo stock de este vendedor
             session.query(Producto).filter_by(vendedor_email=vendedor_email).delete(synchronize_session=False)
+            
+            # Precargar catálogo maestro en memoria para evitar N consultas individuales a la red
+            cat_existentes = {c.nombre.strip().lower() for c in session.query(CatalogoProducto.nombre).all() if c.nombre}
             
             for index, row in df_inventario.iterrows():
                 # Ignorar filas vacías
@@ -360,9 +555,14 @@ class DatabaseHandler:
                     fecha_ingreso=fecha_ing
                 )
                 session.add(nuevo_prod)
-                self.asegurar_en_catalogo(session, nombre)
+                
+                # Inserción rápida en catálogo maestro en memoria si no existía
+                if nombre.lower() not in cat_existentes:
+                    session.add(CatalogoProducto(nombre=nombre, categoria="General"))
+                    cat_existentes.add(nombre.lower())
 
             session.commit()
+            limpiar_cache_sistema()
             return True, "Inventario sincronizado."
         except Exception as e:
             session.rollback()
@@ -411,6 +611,7 @@ class DatabaseHandler:
                 session.add(prod)
             self.asegurar_en_catalogo(session, nombre_val)
             session.commit()
+            limpiar_cache_sistema()
             return True, "Producto guardado satisfactoriamente."
         except Exception as e:
             session.rollback()
@@ -425,6 +626,7 @@ class DatabaseHandler:
             if prod:
                 session.delete(prod)
                 session.commit()
+                limpiar_cache_sistema()
                 return True, "Producto eliminado."
             return False, "Producto no encontrado."
         except Exception as e:
@@ -528,8 +730,8 @@ class DatabaseHandler:
                 fecha_venta=get_mexico_time()
             )
             session.add(nueva_venta)
-                
             session.commit()
+            limpiar_cache_sistema()
             return True, nueva_venta.id, monto_total
         except Exception as e:
             session.rollback()
@@ -571,6 +773,7 @@ class DatabaseHandler:
                 session.add(nuevo_prod)
                 
             session.commit()
+            limpiar_cache_sistema()
             return True, "Costo y Nombre corregidos satisfactoriamente."
         except Exception as e:
             session.rollback()
@@ -596,6 +799,7 @@ class DatabaseHandler:
             )
             session.add(nuevo_abono)
             session.commit()
+            limpiar_cache_sistema()
             return True, "Abono registrado con éxito."
         except Exception as e:
             session.rollback()
@@ -615,10 +819,11 @@ class DatabaseHandler:
         try:
              venta = session.query(Venta).filter_by(id=venta_id).first()
              if venta:
-                 venta.comision_cobrada = True
-                 venta.fecha_cobro_comision = get_mexico_time()
-                 session.commit()
-                 return True, "Se ha registrado el cobro de esta comisión."
+                  venta.comision_cobrada = True
+                  venta.fecha_cobro_comision = get_mexico_time()
+                  session.commit()
+                  limpiar_cache_sistema()
+                  return True, "Se ha registrado el cobro de esta comisión."
              return False, "Venta no encontrada."
         except Exception as e:
              session.rollback()
@@ -631,93 +836,7 @@ class DatabaseHandler:
         Calcula dinámicamente el DataFrame enlazando Ventas + Abonos y generando Estados.
         (Optimizado para evitar el problema de N+1 queries en la Nube - Modelo Venta Directa)
         """
-        session = self.get_session()
-        try:
-            from sqlalchemy.orm import joinedload
-            # Traemos ventas con sus abonos en UNA sola ida (eager loading)
-            ventas = session.query(Venta).options(joinedload(Venta.abonos)).all()
-            # Traemos todos los usuarios en UNA sola ida para el diccionario
-            usuarios = session.query(Usuario).all()
-            user_dict = {u.email: u for u in usuarios}
-            
-            # Diccionario rápido de productos para sacar su proveedor
-            productos = session.query(Producto).all()
-            prod_dict = {(p.nombre, p.vendedor_email): p for p in productos}
-            
-            datos_procesados = []
-            
-            for v in ventas:
-                abonos_query = v.abonos
-                total_abonos = sum([a.monto_abono for a in abonos_query]) if abonos_query else 0.0
-                
-                # Días desde el último abono
-                dias_ultimo = None
-                if abonos_query:
-                    fechas_abono = [a.fecha_abono for a in abonos_query if a.fecha_abono]
-                    if fechas_abono:
-                        ultimo = max(fechas_abono)
-                        diferencia = get_mexico_time() - ultimo
-                        dias_ultimo = diferencia.days
-                
-                if dias_ultimo is None:
-                    if v.fecha_venta:
-                        dias_ultimo = (get_mexico_time() - v.fecha_venta).days
-                    else:
-                        dias_ultimo = 0
-                
-                saldo = v.monto_total - total_abonos
-                estado = "Pagado" if saldo <= 0 else "Adeudo"
-                
-                # Búsqueda de datos del vendedor
-                vendedor = user_dict.get(v.vendedor_email)
-                tasa = vendedor.tasa_comision if vendedor else 0.10
-                nombre_vendedor = vendedor.nombre if vendedor else "Desconocido"
-                
-                prod = prod_dict.get((v.producto_nombre, v.vendedor_email))
-                nombre_proveedor = prod.proveedor if prod and prod.proveedor else "Desconocido"
-                
-                # Comisión directa del vendedor
-                comision_ganada = v.monto_total * tasa
-                comision_pagada = "SI" if estado == "Pagado" else "NO"
-                
-                # === MÉTRICAS FINANCIERAS NETAS (VENTA DIRECTA) ===
-                # Desglose fiscal exacto de IVA incluido (16%)
-                subtotal_sin_iva = v.monto_total / 1.16
-                iva_generado = v.monto_total - subtotal_sin_iva
-                
-                costo_unit = getattr(v, "costo_historico", 0.0) or 0.0
-                cant = getattr(v, "cantidad", 1) or 1
-                costo_bases = costo_unit * cant
-                
-                utilidad_neta = subtotal_sin_iva - costo_bases - comision_ganada
-                
-                fila = {
-                    "ID_Venta": v.id,
-                    "Fecha_Venta": v.fecha_venta.strftime("%d-%b-%Y") if v.fecha_venta else "",
-                    "Dias_Ultimo_Abono": dias_ultimo,
-                    "Nombre_Vendedor": nombre_vendedor,
-                    "Vendedor_Email": v.vendedor_email,
-                    "Cliente": v.cliente,
-                    "Producto": v.producto_nombre,
-                    "Cantidad": cant,
-                    "Proveedor": nombre_proveedor,
-                    "Total_Venta": v.monto_total,
-                    "IVA_(16%)": iva_generado,
-                    "Costo_Producto": costo_bases,
-                    "Total_Abono": total_abonos,
-                    "Saldo_Pendiente": saldo,
-                    "Estado_Venta": estado,
-                    "Comision_Generada": comision_ganada,
-                    "Utilidad_Neta": utilidad_neta,
-                    "Comision_Pagada": comision_pagada,
-                    "Comision_Fisicamente_Cobrada": v.comision_cobrada,
-                    "Fecha_Cobro_Comision": v.fecha_cobro_comision.strftime("%d-%b-%Y") if hasattr(v, "fecha_cobro_comision") and v.fecha_cobro_comision else ""
-                }
-                datos_procesados.append(fila)
-                
-            return pd.DataFrame(datos_procesados)
-        finally:
-            session.close()
+        return _cached_obtener_tabla_ventas_completa()
 
     def _devolver_stock(self, session, vendedor_email, producto_nombre, cantidad):
         """Devuelve stock al inventario considerando grupos de inventario compartido o restituyendo el producto."""
@@ -797,10 +916,12 @@ class DatabaseHandler:
                 if hasattr(venta, 'comision_red') and venta.comision_red:
                     venta.comision_red = -abs(venta.comision_red)
                 session.commit()
+                limpiar_cache_sistema()
                 return True, "Venta anulada. Ya se le había pagado comisión; se pasmó en monto negativo para ser restada de su próximo pago."
             else:
                 session.delete(venta) # Cascada eliminará Abonos adjuntos
                 session.commit()
+                limpiar_cache_sistema()
                 return True, "Venta eliminada exitosamente y stock devuelto."
         except Exception as e:
             session.rollback()
@@ -834,6 +955,7 @@ class DatabaseHandler:
             venta.costo_historico = costo_float
             
             session.commit()
+            limpiar_cache_sistema()
             return True, "Registro actualizado en sistema y control de inventario."
         except Exception as e:
             session.rollback()
@@ -850,6 +972,7 @@ class DatabaseHandler:
                 
             session.delete(abono)
             session.commit()
+            limpiar_cache_sistema()
             return True, "Abono cancelado exitosamente."
         except Exception as e:
             session.rollback()
@@ -867,6 +990,7 @@ class DatabaseHandler:
             abono.monto_abono = float(nuevo_monto)
             abono.metodo_pago = nuevo_metodo
             session.commit()
+            limpiar_cache_sistema()
             return True, "Recibo actualizado correctamente."
         except Exception as e:
             session.rollback()
@@ -875,13 +999,7 @@ class DatabaseHandler:
             session.close()
 
     def leer_abonos(self):
-        session = self.get_session()
-        try:
-            query = session.query(Abono)
-            df = pd.read_sql(query.statement, session.bind)
-            return df
-        finally:
-            session.close()
+        return _cached_leer_abonos()
 
     # ==========================
     #   USUARIOS Y AUTENTICACIÓN LOGIC PÚBLICA
@@ -1017,13 +1135,7 @@ class DatabaseHandler:
              session.close()
 
     def obtener_vendedores(self):
-        session = self.get_session()
-        try:
-            query = session.query(Usuario).filter(Usuario.rol != "Admin")
-            df = pd.read_sql(query.statement, session.bind)
-            return df
-        finally:
-            session.close()
+        return _cached_obtener_vendedores()
 
     def registrar_vendedor(self, nombre, email, password, comision=0.10, patrocinador_email=None, tipo_vendedor="Crédito"):
         session = self.get_session()
@@ -1039,6 +1151,7 @@ class DatabaseHandler:
             )
             session.add(nuevo)
             session.commit()
+            limpiar_cache_sistema()
             return True, "Vendedor registrado correctamente."
         except IntegrityError:
             session.rollback()
@@ -1130,6 +1243,7 @@ class DatabaseHandler:
             )
             session.add(nuevo_gasto)
             session.commit()
+            limpiar_cache_sistema()
             return True, "Gasto registrado correctamente."
         except Exception as e:
             session.rollback()
@@ -1138,25 +1252,40 @@ class DatabaseHandler:
             session.close()
 
     def obtener_gastos(self):
+        return _cached_obtener_gastos()
+
+    def obtener_archivo_gasto(self, gasto_id, tipo):
+        """Descarga bajo demanda el archivo binario ('ticket', 'xml' o 'pdf') de un gasto específico."""
         session = self.get_session()
         try:
-            gastos = session.query(Gasto).order_by(Gasto.fecha_gasto.desc()).all()
-            data = []
+            gasto = session.query(Gasto).filter_by(id=gasto_id).first()
+            if not gasto:
+                return None
+            if tipo == "ticket":
+                return gasto.ticket_foto
+            elif tipo == "xml":
+                return gasto.factura_xml
+            elif tipo == "pdf":
+                return gasto.factura_pdf
+            return None
+        finally:
+            session.close()
+
+    def obtener_facturas_binarias_periodo(self, gasto_ids):
+        """Descarga bajo demanda únicamente los XML y PDF de los gastos seleccionados para exportación ZIP."""
+        if not gasto_ids:
+            return {}
+        session = self.get_session()
+        try:
+            gastos = session.query(Gasto.id, Gasto.fecha_gasto, Gasto.factura_xml, Gasto.factura_pdf).filter(Gasto.id.in_(gasto_ids)).all()
+            archivos = {}
             for g in gastos:
-                data.append({
-                    "ID": g.id,
-                    "Concepto": g.concepto,
-                    "Monto": g.monto,
-                    "Categoria": g.categoria,
-                    "Fecha": g.fecha_gasto.strftime("%d-%m-%Y %H:%M") if g.fecha_gasto else "",
-                    "Tiene_Foto": True if g.ticket_foto else False,
-                    "Foto_Bytes": g.ticket_foto,
-                    "Tiene_XML": True if g.factura_xml else False,
-                    "Tiene_PDF": True if g.factura_pdf else False,
-                    "XML_Bytes": g.factura_xml,
-                    "PDF_Bytes": g.factura_pdf
-                })
-            return pd.DataFrame(data)
+                archivos[g.id] = {
+                    "fecha": g.fecha_gasto,
+                    "xml": g.factura_xml,
+                    "pdf": g.factura_pdf
+                }
+            return archivos
         finally:
             session.close()
 
@@ -1167,6 +1296,7 @@ class DatabaseHandler:
             if gasto:
                 session.delete(gasto)
                 session.commit()
+                limpiar_cache_sistema()
                 return True, "Gasto eliminado correctamente."
             return False, "Gasto no encontrado."
         except Exception as e:
@@ -1180,21 +1310,7 @@ class DatabaseHandler:
     # ==========================
 
     def obtener_catalogo_maestro(self):
-        """Devuelve todos los productos del catálogo maestro estandarizado."""
-        session = self.get_session()
-        try:
-            prods = session.query(CatalogoProducto).order_by(CatalogoProducto.nombre.asc()).all()
-            if not prods:
-                nombres_existentes = session.query(Producto.nombre).distinct().all()
-                for (nom,) in nombres_existentes:
-                    if nom and nom.strip():
-                        c_p = CatalogoProducto(nombre=nom.strip(), categoria="General")
-                        session.add(c_p)
-                session.commit()
-                prods = session.query(CatalogoProducto).order_by(CatalogoProducto.nombre.asc()).all()
-            return [{"id": p.id, "nombre": p.nombre, "categoria": p.categoria, "descripcion": p.descripcion} for p in prods]
-        finally:
-            session.close()
+        return _cached_obtener_catalogo_maestro()
 
     def agregar_producto_catalogo(self, nombre, categoria="General", descripcion=""):
         """Agrega un nombre de producto al catálogo maestro si no existe."""
@@ -1211,6 +1327,7 @@ class DatabaseHandler:
             nuevo = CatalogoProducto(nombre=nombre_clean, categoria=categoria, descripcion=descripcion)
             session.add(nuevo)
             session.commit()
+            limpiar_cache_sistema()
             return True, f"Producto '{nombre_clean}' agregado al catálogo maestro."
         except Exception as e:
             session.rollback()
@@ -1219,22 +1336,7 @@ class DatabaseHandler:
             session.close()
 
     def obtener_grupos_inventario(self):
-        """Devuelve la lista de grupos de inventario con sus vendedores asociados."""
-        session = self.get_session()
-        try:
-            grupos = session.query(GrupoInventario).all()
-            resultado = []
-            for g in grupos:
-                miembros = session.query(Usuario).filter_by(grupo_inventario_id=g.id).all()
-                resultado.append({
-                    "id": g.id,
-                    "nombre_grupo": g.nombre_grupo,
-                    "fecha_creacion": g.fecha_creacion,
-                    "miembros": [{"email": m.email, "nombre": m.nombre} for m in miembros]
-                })
-            return resultado
-        finally:
-            session.close()
+        return _cached_obtener_grupos_inventario()
 
     def actualizar_grupo_inventario(self, grupo_id, nuevo_nombre, nuevos_emails_vendedores):
         """Actualiza el nombre y los vendedores integrantes de un grupo de inventario existente."""
@@ -1262,6 +1364,7 @@ class DatabaseHandler:
                     usr.grupo_inventario_id = grupo.id
                     
             session.commit()
+            limpiar_cache_sistema()
             return True, f"Grupo '{nombre_clean}' actualizado exitosamente con {len(nuevos_emails_vendedores)} integrantes."
         except Exception as e:
             session.rollback()
@@ -1293,6 +1396,7 @@ class DatabaseHandler:
                     usr.grupo_inventario_id = nuevo_grupo.id
             
             session.commit()
+            limpiar_cache_sistema()
             return True, f"Grupo '{nombre_clean}' creado exitosamente."
         except Exception as e:
             session.rollback()
@@ -1314,6 +1418,7 @@ class DatabaseHandler:
             
             session.delete(grupo)
             session.commit()
+            limpiar_cache_sistema()
             return True, "Grupo eliminado y vendedores desvinculados."
         except Exception as e:
             session.rollback()
@@ -1335,6 +1440,7 @@ class DatabaseHandler:
                     usr.grupo_inventario_id = grupo_id
             
             session.commit()
+            limpiar_cache_sistema()
             return True, "Integrantes del grupo actualizados."
         except Exception as e:
             session.rollback()
