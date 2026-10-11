@@ -157,14 +157,21 @@ def show():
             import zipfile
             import io
             
+            # Recuperamos los binarios bajo demanda únicamente para las facturas encontradas
+            facturas_bin = db.obtener_facturas_binarias_periodo(df_facturas['ID'].tolist())
+            
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
                 for _, row in df_facturas.iterrows():
-                    prefix = f"gasto_{row['ID']}_{str(row['Fecha']).replace(':', '').replace(' ', '_').replace('-', '')}"
-                    if row['Tiene_XML'] and row['XML_Bytes']:
-                        zip_file.writestr(f"{prefix}.xml", row['XML_Bytes'])
-                    if row['Tiene_PDF'] and row['PDF_Bytes']:
-                        zip_file.writestr(f"{prefix}.pdf", row['PDF_Bytes'])
+                    g_id = row['ID']
+                    f_info = facturas_bin.get(g_id, {})
+                    prefix = f"gasto_{g_id}_{str(row['Fecha']).replace(':', '').replace(' ', '_').replace('-', '')}"
+                    xml_data = f_info.get("xml")
+                    pdf_data = f_info.get("pdf")
+                    if row['Tiene_XML'] and xml_data:
+                        zip_file.writestr(f"{prefix}.xml", xml_data)
+                    if row['Tiene_PDF'] and pdf_data:
+                        zip_file.writestr(f"{prefix}.pdf", pdf_data)
             
             st.download_button(
                 label="📦 Descargar Todas las Facturas (ZIP)",
@@ -178,10 +185,14 @@ def show():
             for _, row in df_facturas.iterrows():
                 with st.expander(f"Gasto #{row['ID']} - {row['Concepto']} (${row['Monto']:,.2f})"):
                     cols = st.columns(2)
-                    if row['Tiene_XML'] and row['XML_Bytes']:
-                        cols[0].download_button("📄 Descargar XML", data=row['XML_Bytes'], file_name=f"gasto_{row['ID']}.xml", mime="application/xml", key=f"xml_{row['ID']}")
-                    if row['Tiene_PDF'] and row['PDF_Bytes']:
-                        cols[1].download_button("📄 Descargar PDF", data=row['PDF_Bytes'], file_name=f"gasto_{row['ID']}.pdf", mime="application/pdf", key=f"pdf_{row['ID']}")
+                    if row['Tiene_XML']:
+                        xml_bytes = db.obtener_archivo_gasto(row['ID'], "xml")
+                        if xml_bytes:
+                            cols[0].download_button("📄 Descargar XML", data=xml_bytes, file_name=f"gasto_{row['ID']}.xml", mime="application/xml", key=f"xml_{row['ID']}")
+                    if row['Tiene_PDF']:
+                        pdf_bytes = db.obtener_archivo_gasto(row['ID'], "pdf")
+                        if pdf_bytes:
+                            cols[1].download_button("📄 Descargar PDF", data=pdf_bytes, file_name=f"gasto_{row['ID']}.pdf", mime="application/pdf", key=f"pdf_{row['ID']}")
         else:
             st.caption("No hay gastos con factura (XML/PDF) en este periodo.")
     else:
