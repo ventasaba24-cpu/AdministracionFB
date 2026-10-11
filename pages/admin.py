@@ -454,6 +454,7 @@ def render_tab_inteligencia(db):
     col_t1, col_t2 = st.columns(2)
     with col_t1:
         st.markdown("#### 🏆 Top 10 Más Vendidos (Piezas)")
+        st.caption("💡 *Si ves un mismo perfume dividido con variantes de nombre o stock en 0, únelos en **📝 Correcciones > 🔗 Homologar Perfumes**.*")
         top_volumen = df_filtered.sort_values(by='unidades_vendidas', ascending=False).head(10)
         if not top_volumen.empty:
             for idx_vol, r_vol in top_volumen.reset_index(drop=True).iterrows():
@@ -2523,10 +2524,13 @@ def show():
     elif tab_activa == "📝 Correcciones":
         st.subheader("🕵️ Buscador Inteligente para Correcciones")
         st.markdown("Busca cualquier registro rápidamente para modificarlo o eliminarlo permanentemente del sistema sin dejar basura ni descuadrar tus inventarios.")
-        tipo_correccion = st.radio("¿Qué tipo de registro deseas corregir?", ["Ventas", "Abonos"], horizontal=True)
+        tipo_correccion = st.radio("¿Qué tipo de registro deseas corregir?", ["Ventas", "Abonos", "🔗 Homologar Perfumes Duplicados"], horizontal=True)
         
-        busqueda = st.text_input("🔍 Escribe para buscar...", placeholder="Por ejemplo: Maria, 45, o nombre de producto", key="buscador_admin")
-        termino = str(busqueda).lower() if busqueda else ""
+        if tipo_correccion in ["Ventas", "Abonos"]:
+            busqueda = st.text_input("🔍 Escribe para buscar...", placeholder="Por ejemplo: Maria, 45, o nombre de producto", key="buscador_admin")
+            termino = str(busqueda).lower() if busqueda else ""
+        else:
+            termino = ""
         
         if tipo_correccion == "Ventas":
             if not df_todas.empty:
@@ -2590,7 +2594,7 @@ def show():
                         st.markdown("<br>", unsafe_allow_html=True)
                 else:
                     st.warning("No se encontró ninguna Venta coincidente.")
-        else:
+        elif tipo_correccion == "Abonos":
             if not df_abonos_global.empty:
                 # Mergeamos antes de filtrar para que el buscador encuentre nombres de cliente
                 if not df_todas.empty:
@@ -2663,6 +2667,93 @@ def show():
                         st.markdown("<br>", unsafe_allow_html=True)
                 else:
                     st.warning("No se encontró ningún Abono coincidente.")
+
+        elif tipo_correccion == "🔗 Homologar Perfumes Duplicados":
+            st.markdown("### 🔗 Homologación y Fusión de Perfumes Duplicados")
+            st.markdown("Unifica productos registrados con nombres ligeramente distintos (por ejemplo: `LATTAFA KHAMRAH UNISEX 100 ml` y `LATTAFA KHAMRAH 100 ml`). Esta herramienta **consolida todas las ventas pasadas y suma el stock en un solo perfume oficial**, corrigiendo inmediatamente el Top 10 y los reportes.")
+            
+            sub_modo = st.radio("Método de Trabajo:", ["🤖 Sugerencias Inteligentes de Duplicados", "🛠️ Fusión Manual"], horizontal=True, key="modo_homologacion")
+            
+            if sub_modo == "🤖 Sugerencias Inteligentes de Duplicados":
+                with st.spinner("Analizando catálogo y ventas en busca de discrepancias..."):
+                    parejas = db.detectar_duplicados_sugeridos()
+                
+                if parejas:
+                    st.markdown(f"#### 🔍 Se detectaron {len(parejas)} posibles variantes del mismo perfume:")
+                    for idx_p, p in enumerate(parejas):
+                        with st.container():
+                            st.markdown(f"""
+                            <div style='background: #ffffff; padding: 12px 16px; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;'>
+                                <div style='font-size: 14px; font-weight: bold; color: #1e293b; margin-bottom: 6px;'>
+                                    Similitud {p['similitud']}%: <span style='color: #ef4444;'>{p['origen']}</span> ➔ <span style='color: #10b981;'>{p['destino']}</span>
+                                </div>
+                                <div style='font-size: 12px; color: #64748b; line-height: 1.5;'>
+                                    <b>Variante (A retirar):</b> {p['ventas_origen']} ventas | {p['stock_origen']} pzs en stock<br>
+                                    <b>Destino (Oficial a conservar):</b> {p['ventas_destino']} ventas | {p['stock_destino']} pzs en stock
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            c_f1, c_f2 = st.columns([2, 1])
+                            with c_f1:
+                                if st.button(f"🔗 Fusionar '{p['origen']}' ➔ '{p['destino']}'", key=f"btn_fus_{idx_p}", type="primary"):
+                                    ex, msj = db.homologar_fusionar_productos(p['origen'], p['destino'])
+                                    if ex:
+                                        st.success(msj)
+                                        st.rerun()
+                                    else:
+                                        st.error(msj)
+                            with c_f2:
+                                if st.button(f"🔄 Invertir (Dejar '{p['origen']}')", key=f"btn_inv_{idx_p}"):
+                                    ex, msj = db.homologar_fusionar_productos(p['destino'], p['origen'])
+                                    if ex:
+                                        st.success(msj)
+                                        st.rerun()
+                                    else:
+                                        st.error(msj)
+                            st.markdown("<hr style='margin: 12px 0; border: none; border-top: 1px solid #f1f5f9;'>", unsafe_allow_html=True)
+                else:
+                    st.success("✅ ¡Excelente! No se detectaron productos duplicados con alta similitud en este momento.")
+            
+            else:
+                st.markdown("#### 🛠️ Fusión Manual de Perfumes")
+                st.markdown("Selecciona manualmente la variante que deseas retirar y el nombre oficial definitivo que deseas conservar.")
+                
+                todos_prods = db.obtener_todos_los_nombres_productos()
+                if len(todos_prods) >= 2:
+                    col_m1, col_m2 = st.columns(2)
+                    with col_m1:
+                        origen_man = st.selectbox(
+                            "1. Variante duplicada que deseas retirar:",
+                            options=todos_prods,
+                            key="sel_man_origen"
+                        )
+                    with col_m2:
+                        opciones_dest = [p for p in todos_prods if p != origen_man]
+                        destino_man = st.selectbox(
+                            "2. Nombre oficial que debe quedar:",
+                            options=opciones_dest,
+                            key="sel_man_destino"
+                        )
+                    
+                    usar_nuevo_nombre = st.checkbox("✍️ Escribir un nombre oficial nuevo (si deseas rebautizarlo)")
+                    nombre_destino_final = destino_man
+                    if usar_nuevo_nombre:
+                        nuevo_nombre_custom = st.text_input("Escribe el nombre oficial final:", placeholder="Ej: Lattafa Khamrah 100 ml")
+                        if nuevo_nombre_custom.strip():
+                            nombre_destino_final = nuevo_nombre_custom.strip()
+                    
+                    st.warning(f"⚠️ **Atención:** Todas las ventas pasadas y piezas de inventario de **'{origen_man}'** se trasladarán permanentemente a **'{nombre_destino_final}'**.")
+                    
+                    if st.button("🔗 Confirmar Fusión de Productos", type="primary", key="btn_confirmar_manual"):
+                        ex, msj = db.homologar_fusionar_productos(origen_man, nombre_destino_final)
+                        if ex:
+                            st.success(msj)
+                            st.rerun()
+                        else:
+                            st.error(msj)
+                else:
+                    st.info("No hay suficientes productos registrados en el sistema para realizar fusiones.")
 
     elif tab_activa == "📉 Gastos y Egresos":
         st.subheader("Control de Gastos y Egresos Operativos")
