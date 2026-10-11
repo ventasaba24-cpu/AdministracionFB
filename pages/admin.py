@@ -2670,6 +2670,8 @@ def show():
 
         elif tipo_correccion == "🔗 Homologar Perfumes Duplicados":
             st.markdown("### 🔗 Homologación y Fusión de Perfumes Duplicados")
+            if "mensaje_exito_fusion" in st.session_state:
+                st.success(st.session_state.pop("mensaje_exito_fusion"))
             st.markdown("Unifica productos registrados con nombres ligeramente distintos (por ejemplo: `LATTAFA KHAMRAH UNISEX 100 ml` y `LATTAFA KHAMRAH 100 ml`). Esta herramienta **consolida todas las ventas pasadas y suma el stock en un solo perfume oficial**, corrigiendo inmediatamente el Top 10 y los reportes.")
             
             sub_modo = st.radio("Método de Trabajo:", ["🤖 Sugerencias Inteligentes de Duplicados", "🛠️ Fusión Manual"], horizontal=True, key="modo_homologacion")
@@ -2699,7 +2701,7 @@ def show():
                                 if st.button(f"🔗 Fusionar '{p['origen']}' ➔ '{p['destino']}'", key=f"btn_fus_{idx_p}", type="primary"):
                                     ex, msj = db.homologar_fusionar_productos(p['origen'], p['destino'])
                                     if ex:
-                                        st.success(msj)
+                                        st.session_state["mensaje_exito_fusion"] = msj
                                         st.rerun()
                                     else:
                                         st.error(msj)
@@ -2707,7 +2709,7 @@ def show():
                                 if st.button(f"🔄 Invertir (Dejar '{p['origen']}')", key=f"btn_inv_{idx_p}"):
                                     ex, msj = db.homologar_fusionar_productos(p['destino'], p['origen'])
                                     if ex:
-                                        st.success(msj)
+                                        st.session_state["mensaje_exito_fusion"] = msj
                                         st.rerun()
                                     else:
                                         st.error(msj)
@@ -2810,7 +2812,7 @@ def show():
                     if st.button("🔗 Confirmar Fusión de Productos", type="primary", key="btn_confirmar_manual"):
                         ex, msj = db.homologar_fusionar_productos(origen_man, nombre_destino_final)
                         if ex:
-                            st.success(msj)
+                            st.session_state["mensaje_exito_fusion"] = msj
                             st.rerun()
                         else:
                             st.error(msj)
