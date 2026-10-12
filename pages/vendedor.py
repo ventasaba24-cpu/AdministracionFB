@@ -167,9 +167,19 @@ def show():
                  limite_cantidad = 1000
                  precio_def = 0.0
             
+            # Obtener lista de clientes previos para evitar faltas de ortografía o duplicados
+            clientes_previos = sorted(list(set([str(c).strip() for c in df_todas['Cliente'].dropna().unique() if str(c).strip()]))) if not df_todas.empty else []
+            
             with st.form("venta_form", clear_on_submit=False):
                 st.markdown("### 📝 Datos de Venta")
-                cliente = st.text_input("👤 Nombre Completo del Cliente", placeholder="Ej: Maria Lopez")
+                if clientes_previos:
+                    sel_cl_opc = ["✍️ Escribir Cliente Nuevo..."] + clientes_previos
+                    cliente_sug = st.selectbox("👥 Cliente Frecuente (Opcional)", options=sel_cl_opc, index=0, help="Elige un cliente existente para mantener su historial unificado, o déjalo en nuevo.")
+                    cliente_val_def = cliente_sug if cliente_sug != "✍️ Escribir Cliente Nuevo..." else ""
+                else:
+                    cliente_val_def = ""
+
+                cliente = st.text_input("👤 Nombre Completo del Cliente", value=cliente_val_def, placeholder="Ej: Maria Lopez")
                 
                 # Usar Selectbox en vez de NumberInput para la cantidad (Es más fácil en el celular)
                 opciones_cantidad = list(range(1, min(51, limite_cantidad + 1)))
@@ -190,7 +200,8 @@ def show():
                 submit_venta = st.form_submit_button("Registrar Venta")
                 
                 if submit_venta:
-                    if not cliente:
+                    cliente_limpio = cliente.strip() if cliente else ""
+                    if not cliente_limpio:
                         st.error("El nombre del cliente es obligatorio.")
                     elif not producto:
                         st.error("Por favor selecciona un producto.")
@@ -199,20 +210,20 @@ def show():
                         st.error("❌ Este producto no fue cargado correctamente en el sistema (Falta información de inventario previa). Por favor pide al administrador que lo asigne antes de venderlo.")
                     else:
                         prod_final = producto
-                        
                         st.toast(f"Procesando venta de {prod_final}...")
                     
-                    # Llamada a DB 
-                    exito, id_v, monto = db.registrar_venta(st.session_state.user_email, cliente, prod_final, cantidad, precio)
-                    
-                    if exito:
-                        st.success(f"Venta #{id_v} registrada exitosamente para el cliente {cliente} por ${monto:,.2f} MXN.")
-                        if pagado_check:
-                             # Auto-registrar abono completo instantáneo
-                             db.registrar_abono(id_v, monto, "Efectivo")
-                             st.info(f"Comisión registrada: ${(monto * st.session_state.user_comision):,.2f} MXN")
-                    else:
-                        st.error("Error al registrar en la base de datos.")
+                        # Llamada a DB dentro del bloque seguro
+                        exito, id_v, monto = db.registrar_venta(st.session_state.user_email, cliente_limpio, prod_final, cantidad, precio)
+                        
+                        if exito:
+                            st.success(f"Venta #{id_v} registrada exitosamente para el cliente {cliente_limpio} por ${monto:,.2f} MXN.")
+                            if pagado_check:
+                                # Auto-registrar abono completo instantáneo
+                                db.registrar_abono(id_v, monto, "Efectivo")
+                                st.info(f"Comisión registrada: ${(monto * st.session_state.user_comision):,.2f} MXN")
+                            st.rerun()
+                        else:
+                            st.error("Error al registrar en la base de datos.")
 
         # --- SECCIÓN: COBRO DE COMISIONES ---
         st.markdown("---")
