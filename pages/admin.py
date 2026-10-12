@@ -326,17 +326,27 @@ def fetch_ventas_cached():
     from database import DatabaseHandler
     return DatabaseHandler().obtener_tabla_ventas_completa()
 
+@st.cache_data(ttl=120, show_spinner=False)
+def fetch_datos_inteligencia():
+    from database import init_db_connection
+    engine, _ = init_db_connection()
+    with engine.connect() as conn:
+        df_v = pd.read_sql("SELECT * FROM ventas", conn)
+        df_p = pd.read_sql("SELECT * FROM productos", conn)
+        df_a = pd.read_sql("SELECT * FROM abonos", conn)
+        df_c = pd.read_sql("SELECT * FROM catalogo_productos", conn)
+    return df_v, df_p, df_a, df_c
+
 def render_tab_inteligencia(db):
     st.subheader("💡 Inteligencia Financiera, GMROI y Reabastecimiento")
     st.markdown("Análisis estratégico corporativo en tiempo real para maximizar el retorno de inversión en stock, el flujo de caja y la eficiencia operativa.")
 
     try:
-        engine = db.engine
-        with engine.connect() as conn:
-            df_ventas = pd.read_sql("SELECT * FROM ventas", conn)
-            df_prods = pd.read_sql("SELECT * FROM productos", conn)
-            df_abonos = pd.read_sql("SELECT * FROM abonos", conn)
-            df_cat = pd.read_sql("SELECT * FROM catalogo_productos", conn)
+        df_ventas, df_prods, df_abonos, df_cat = fetch_datos_inteligencia()
+        df_ventas = df_ventas.copy()
+        df_prods = df_prods.copy()
+        df_abonos = df_abonos.copy()
+        df_cat = df_cat.copy()
     except Exception as e:
         st.error(f"Error cargando datos para Inteligencia: {e}")
         return
@@ -357,7 +367,8 @@ def render_tab_inteligencia(db):
     # --- SECCIÓN 1: RESUMEN EJECUTIVO FINANCIERO REAL ---
     total_ventas_dinero = df_ventas['monto_total'].sum()
     total_piezas = df_ventas['cantidad'].sum()
-    total_costo_historico = (df_ventas['costo_historico'] * df_ventas['cantidad']).sum()
+    # costo_historico ya representa el costo total de la venta
+    total_costo_historico = df_ventas['costo_historico'].sum()
     total_utilidad_bruta = total_ventas_dinero - total_costo_historico
     margen_global_pct = (total_utilidad_bruta / total_ventas_dinero * 100) if total_ventas_dinero > 0 else 0.0
 
@@ -431,7 +442,7 @@ def render_tab_inteligencia(db):
     res = df_ventas.groupby('producto_clean').agg(
         unidades_vendidas=('cantidad', 'sum'),
         ingresos_totales=('monto_total', 'sum'),
-        costo_total=('costo_historico', lambda x: (x * df_ventas.loc[x.index, 'cantidad']).sum()),
+        costo_total=('costo_historico', 'sum'),
         monto_cobrado=('monto_abono', 'sum'),
         saldo_pendiente=('saldo_pendiente', 'sum')
     ).reset_index()
@@ -1079,7 +1090,7 @@ def show():
         
         # --- SECCIÓN: RESPALDOS Y SEGURIDAD ---
         with st.expander("🛡️ Control de Respaldos y Seguridad (Google Drive & Excel)", expanded=False):
-            st.markdown("Genera copias de seguridad de toda la base de datos en tiempo real.")
+            st.markdown("Genera copias de seguridad de toda la base de datos en tiempo real o restaura una copia previa.")
             b_col1, b_col2 = st.columns(2)
             with b_col1:
                 if st.button("📦 Preparar Respaldo Excel", use_container_width=True, key="btn_prep_excel"):
@@ -1113,6 +1124,32 @@ def show():
                                 st.warning(msj_g)
                         except Exception as e_drive:
                             st.error(f"Error conectando a Google Drive: {e_drive}")
+
+            st.markdown("<hr style='margin: 14px 0px;'>", unsafe_allow_html=True)
+            st.markdown("##### 📥 Restaurar Base de Datos desde Respaldo Excel")
+            st.caption("Sube un archivo `.xlsx` de respaldo para restablecer el catálogo, inventario, ventas y abonos.")
+            
+            archivo_respaldo_up = st.file_uploader(
+                "Seleccionar archivo de respaldo (.xlsx)", 
+                type=["xlsx"], 
+                key="uploader_restaurar_backup",
+                help="El archivo debe contener las pestañas oficiales generadas por el sistema."
+            )
+            
+            if archivo_respaldo_up is not None:
+                st.warning("⚠️ **ATENCIÓN:** Esta acción sobrescribirá las tablas actuales con la información contenida en el archivo de respaldo. Asegúrate de tener una copia reciente antes de proceder.")
+                confirma_restaurar = st.checkbox("Entiendo el riesgo y confirmo que deseo restaurar la base de datos.", key="chk_confirma_restaurar")
+                
+                if confirma_restaurar:
+                    if st.button("🚨 Proceder con la Restauración de Datos", type="primary", use_container_width=True, key="btn_exec_restaurar"):
+                        with st.spinner("Restaurando base de datos y sincronizando contadores..."):
+                            from backup import restaurar_base_datos_desde_excel
+                            ok_rst, msj_rst = restaurar_base_datos_desde_excel(db, archivo_respaldo_up)
+                            if ok_rst:
+                                st.success(f"✅ {msj_rst}")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {msj_rst}")
         st.markdown("<br>", unsafe_allow_html=True)
         
         # --- CONTROL DE PERÍODO Y FILTRO DE MES/AÑO EN KPIS ---
@@ -1995,7 +2032,7 @@ def show():
             # Reorden inteligente según meta de semanas de cobertura elegida
             df_inteligencia["reorden_sugerido"] = np.ceil(
                 (df_inteligencia["Rotacion_Semanal"] * float(meta_semanas)) - df_inteligencia["stock"]
-            ).clip(lower=1).astype(int)
+            ).clip(lower=0).astype(int)
 
             # Identificación Pareto 80/20 (Top Rentable)
             df_sorted_u = df_inteligencia.sort_values(by="Utilidad_Generada", ascending=False).copy()
@@ -2018,6 +2055,9 @@ def show():
                 ((df_inteligencia["stock"] <= 1) & (df_inteligencia["Unidades_Vendidas"] > 0) & cond_demanda_activa)
             )
             alertas_quiebre = df_inteligencia[cond_quiebre_activo].sort_values(by=["stock", "Rotacion_Semanal", "Utilidad_Generada"], ascending=[True, False, False]).copy()
+            if not alertas_quiebre.empty:
+                # En quiebre activo, asegurar que sugiera al menos 1 unidad de reabastecimiento
+                alertas_quiebre["reorden_sugerido"] = alertas_quiebre["reorden_sugerido"].clip(lower=1)
 
             # Quiebres Inactivos / Catálogo Agotado sin demanda reciente
             cond_quiebre_inactivo = (
