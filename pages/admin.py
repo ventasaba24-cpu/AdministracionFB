@@ -1124,32 +1124,6 @@ def show():
                                 st.warning(msj_g)
                         except Exception as e_drive:
                             st.error(f"Error conectando a Google Drive: {e_drive}")
-
-            st.markdown("<hr style='margin: 14px 0px;'>", unsafe_allow_html=True)
-            st.markdown("##### 📥 Restaurar Base de Datos desde Respaldo Excel")
-            st.caption("Sube un archivo `.xlsx` de respaldo para restablecer el catálogo, inventario, ventas y abonos.")
-            
-            archivo_respaldo_up = st.file_uploader(
-                "Seleccionar archivo de respaldo (.xlsx)", 
-                type=["xlsx"], 
-                key="uploader_restaurar_backup",
-                help="El archivo debe contener las pestañas oficiales generadas por el sistema."
-            )
-            
-            if archivo_respaldo_up is not None:
-                st.warning("⚠️ **ATENCIÓN:** Esta acción sobrescribirá las tablas actuales con la información contenida en el archivo de respaldo. Asegúrate de tener una copia reciente antes de proceder.")
-                confirma_restaurar = st.checkbox("Entiendo el riesgo y confirmo que deseo restaurar la base de datos.", key="chk_confirma_restaurar")
-                
-                if confirma_restaurar:
-                    if st.button("🚨 Proceder con la Restauración de Datos", type="primary", use_container_width=True, key="btn_exec_restaurar"):
-                        with st.spinner("Restaurando base de datos y sincronizando contadores..."):
-                            from backup import restaurar_base_datos_desde_excel
-                            ok_rst, msj_rst = restaurar_base_datos_desde_excel(db, archivo_respaldo_up)
-                            if ok_rst:
-                                st.success(f"✅ {msj_rst}")
-                                st.rerun()
-                            else:
-                                st.error(f"❌ {msj_rst}")
         st.markdown("<br>", unsafe_allow_html=True)
         
         # --- CONTROL DE PERÍODO Y FILTRO DE MES/AÑO EN KPIS ---
