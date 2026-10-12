@@ -293,7 +293,11 @@ def _cached_obtener_tabla_ventas_completa():
         user_dict = {u.email: u for u in usuarios}
         
         productos = session.query(Producto).all()
-        prod_dict = {(p.nombre, p.vendedor_email): p for p in productos}
+        prod_dict = {}
+        for p in productos:
+            prod_dict[(p.nombre, p.vendedor_email)] = p
+            if p.nombre not in prod_dict:
+                prod_dict[p.nombre] = p
         
         datos_procesados = []
         for v in ventas:
@@ -321,7 +325,7 @@ def _cached_obtener_tabla_ventas_completa():
             tasa = vendedor.tasa_comision if vendedor else 0.10
             nombre_vendedor = vendedor.nombre if vendedor else "Desconocido"
             
-            prod = prod_dict.get((v.producto_nombre, v.vendedor_email))
+            prod = prod_dict.get((v.producto_nombre, v.vendedor_email)) or prod_dict.get(v.producto_nombre)
             nombre_proveedor = prod.proveedor if prod and prod.proveedor else "Desconocido"
             
             comision_ganada = v.monto_total * tasa
@@ -330,9 +334,10 @@ def _cached_obtener_tabla_ventas_completa():
             subtotal_sin_iva = v.monto_total / 1.16
             iva_generado = v.monto_total - subtotal_sin_iva
             
-            costo_unit = getattr(v, "costo_historico", 0.0) or 0.0
-            cant = getattr(v, "cantidad", 1) or 1
-            costo_bases = costo_unit * cant
+            # costo_historico ya representa el costo total de la venta (piezas x costo)
+            costo_bases = float(getattr(v, "costo_historico", 0.0) or 0.0)
+            cant = int(getattr(v, "cantidad", 1) or 1)
+            costo_unit = (costo_bases / cant) if cant > 0 else 0.0
             
             utilidad_neta = subtotal_sin_iva - costo_bases - comision_ganada
             
@@ -599,10 +604,69 @@ class DatabaseHandler:
         finally:
             session.close()
 
+    @staticmethod
+    def calcular_siguiente_lote(lotes_existentes):
+        """Calcula de forma segura el siguiente identificador de lote consecutivo."""
+        import re
+        if not lotes_existentes:
+            return "Lote 1"
+        numeros = []
+        for l in lotes_existentes:
+            if not l:
+                continue
+            nums = re.findall(r'\d+', str(l))
+            if nums:
+                try:
+                    numeros.append(int(nums[-1]))
+                except ValueError:
+                    pass
+        if not numeros:
+            return f"Lote {len(lotes_existentes) + 1}"
+        return f"Lote {max(numeros) + 1}"
+
+    def obtener_lotes_producto_vendedor(self, nombre_producto, vendedor_email):
+        """Devuelve los lotes registrados de un producto específico para un vendedor."""
+        session = self.get_session()
+        try:
+            nombre_clean = str(nombre_producto).strip()
+            prods = session.query(Producto).filter(
+                or_(
+                    Producto.nombre == nombre_clean,
+                    func.trim(func.lower(Producto.nombre)) == nombre_clean.lower()
+                ),
+                Producto.vendedor_email == vendedor_email
+            ).order_by(Producto.id.asc()).all()
+            return [
+                {
+                    "id": p.id,
+                    "nombre": p.nombre,
+                    "lote": p.lote or "Lote 1",
+                    "stock": p.stock or 0,
+                    "precio": p.precio or 0.0,
+                    "costo_compra": p.costo_compra or 0.0,
+                    "proveedor": p.proveedor or "Generico",
+                    "fecha_ingreso": p.fecha_ingreso
+                }
+                for p in prods
+            ]
+        finally:
+            session.close()
+
     def upsert_producto(self, vendedor_email, datos, producto_id=None):
         session = self.get_session()
         try:
             nombre_val = str(datos["nombre"]).strip()
+            lote_val = str(datos.get("lote", "Lote 1")).strip()
+            
+            # Validación anticolisión de lote para este vendedor
+            existente_mismo_lote = session.query(Producto).filter(
+                func.trim(func.lower(Producto.nombre)) == nombre_val.lower(),
+                func.trim(func.lower(Producto.lote)) == lote_val.lower(),
+                Producto.vendedor_email == vendedor_email
+            ).first()
+            if existente_mismo_lote and (producto_id is None or existente_mismo_lote.id != producto_id):
+                return False, f"⚠️ Ya existe el '{lote_val}' registrado para '{nombre_val}' en esta bodega. Utiliza un lote diferente para evitar duplicados."
+
             f_val = datos.get("fecha_ingreso")
             if f_val:
                 if isinstance(f_val, str):
@@ -620,7 +684,7 @@ class DatabaseHandler:
                 if not prod:
                     return False, "Producto no encontrado."
                 prod.nombre = nombre_val
-                prod.lote = str(datos.get("lote", "Lote 1")).strip()
+                prod.lote = lote_val
                 prod.precio = float(datos.get("precio", 0.0))
                 prod.costo_compra = float(datos.get("costo_compra", 0.0))
                 prod.proveedor = str(datos.get("proveedor", "Generico")).strip()
@@ -630,7 +694,7 @@ class DatabaseHandler:
                 prod = Producto(
                     nombre=nombre_val,
                     vendedor_email=vendedor_email,
-                    lote=str(datos.get("lote", "Lote 1")).strip(),
+                    lote=lote_val,
                     precio=float(datos.get("precio", 0.0)),
                     costo_compra=float(datos.get("costo_compra", 0.0)),
                     proveedor=str(datos.get("proveedor", "Generico")).strip(),
