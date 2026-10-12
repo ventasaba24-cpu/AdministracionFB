@@ -334,3 +334,202 @@ def subir_respaldo_a_google_drive(db):
         return True, f"✅ Respaldo '{nombre_archivo}' subido exitosamente a Google Drive."
     except Exception as e:
         return False, f"Error subiendo respaldo a Google Drive: {e}"
+
+
+def restaurar_base_datos_desde_excel(db, archivo_excel):
+    """
+    Restaura la base de datos de forma completa y transaccional a partir de un archivo Excel de respaldo.
+    Lee las 8 hojas del archivo, valida integridad y vuelve a sincronizar secuencias autoincrementales.
+    """
+    import pandas as pd
+    from sqlalchemy import text
+    from database import (
+        Venta, Abono, Producto, Usuario, Gasto, CatalogoProducto, GrupoInventario, IntentoSeguridad,
+        limpiar_cache_sistema
+    )
+
+    try:
+        sheets = pd.read_excel(archivo_excel, sheet_name=None)
+    except Exception as e_read:
+        return False, f"Error al abrir el archivo Excel: {e_read}"
+
+    tablas_requeridas = ["Ventas", "Inventario", "Usuarios", "Abonos"]
+    for t in tablas_requeridas:
+        if t not in sheets:
+            return False, f"El archivo no es un respaldo válido. Falta la pestaña obligatoria '{t}'."
+
+    if hasattr(db, "get_session"):
+        session = db.get_session()
+    elif isinstance(db, tuple) and len(db) >= 2:
+        session = db[1]()
+    else:
+        from database import DatabaseHandler
+        session = DatabaseHandler().get_session()
+
+    engine = session.bind
+
+    try:
+        # 1. Vaciar tablas en orden inverso de dependencias de llaves foráneas
+        session.query(Abono).delete()
+        session.query(Venta).delete()
+        session.query(Producto).delete()
+        session.query(Gasto).delete()
+        session.query(CatalogoProducto).delete()
+        session.query(Usuario).delete()
+        session.query(GrupoInventario).delete()
+        session.query(IntentoSeguridad).delete()
+        session.flush()
+
+        # 2. Restaurar Grupos de Inventario
+        if "Grupos_Inventario" in sheets and not sheets["Grupos_Inventario"].empty:
+            df_g = sheets["Grupos_Inventario"]
+            for _, r in df_g.iterrows():
+                f_crea = pd.to_datetime(r.get("Fecha_Creacion"), errors="coerce")
+                session.add(GrupoInventario(
+                    id=int(r["ID_Grupo"]),
+                    nombre_grupo=str(r["Nombre_Grupo"]).strip(),
+                    fecha_creacion=f_crea.to_pydatetime() if pd.notnull(f_crea) else None
+                ))
+            session.flush()
+
+        # 3. Restaurar Usuarios
+        df_u = sheets["Usuarios"]
+        for _, r in df_u.iterrows():
+            f_u_log = pd.to_datetime(r.get("Ultimo_Login"), errors="coerce")
+            grp_id = int(r["Grupo_Inventario_ID"]) if pd.notnull(r.get("Grupo_Inventario_ID")) else None
+            session.add(Usuario(
+                id=int(r["ID_Usuario"]),
+                nombre=str(r["Nombre"]).strip(),
+                email=str(r["Email"]).strip(),
+                password=str(r["Password_Hash"]).strip(),
+                rol=str(r.get("Rol", "Vendedor")).strip(),
+                tasa_comision=float(r.get("Tasa_Comision", 0.10)),
+                patrocinador_email=str(r["Patrocinador_Email"]).strip() if pd.notnull(r.get("Patrocinador_Email")) else None,
+                tipo_vendedor=str(r.get("Tipo_Vendedor", "Crédito")).strip(),
+                session_token=str(r["Session_Token"]).strip() if pd.notnull(r.get("Session_Token")) else None,
+                grupo_inventario_id=grp_id,
+                ultimo_login=f_u_log.to_pydatetime() if pd.notnull(f_u_log) else None
+            ))
+        session.flush()
+
+        # 4. Restaurar Catálogo de Productos
+        if "Catalogo_Productos" in sheets and not sheets["Catalogo_Productos"].empty:
+            df_cp = sheets["Catalogo_Productos"]
+            for _, r in df_cp.iterrows():
+                session.add(CatalogoProducto(
+                    id=int(r["ID_Catalogo"]),
+                    nombre=str(r["Nombre"]).strip(),
+                    categoria=str(r.get("Categoria", "General")).strip(),
+                    descripcion=str(r.get("Descripcion", "")).strip() if pd.notnull(r.get("Descripcion")) else None
+                ))
+            session.flush()
+
+        # 5. Restaurar Inventario (Productos)
+        df_p = sheets["Inventario"]
+        for _, r in df_p.iterrows():
+            f_ing = pd.to_datetime(r.get("Fecha_Ingreso"), errors="coerce")
+            session.add(Producto(
+                id=int(r["ID_Producto"]),
+                nombre=str(r["Nombre"]).strip(),
+                vendedor_email=str(r["Vendedor_Email"]).strip(),
+                stock=int(r.get("Stock", 0)),
+                precio=float(r.get("Precio_Publico", 0.0)),
+                costo_compra=float(r.get("Costo_Compra", 0.0)),
+                proveedor=str(r.get("Proveedor", "Generico")).strip() if pd.notnull(r.get("Proveedor")) else "Generico",
+                lote=str(r.get("Lote", "Lote 1")).strip() if pd.notnull(r.get("Lote")) else "Lote 1",
+                fecha_ingreso=f_ing.to_pydatetime() if pd.notnull(f_ing) else None
+            ))
+        session.flush()
+
+        # 6. Restaurar Ventas
+        df_v = sheets["Ventas"]
+        for _, r in df_v.iterrows():
+            f_v = pd.to_datetime(r.get("Fecha_Venta"), errors="coerce")
+            f_com = pd.to_datetime(r.get("Fecha_Cobro_Comision"), errors="coerce")
+            session.add(Venta(
+                id=int(r["ID_Venta"]),
+                fecha_venta=f_v.to_pydatetime() if pd.notnull(f_v) else None,
+                vendedor_email=str(r["Vendedor_Email"]).strip(),
+                cliente=str(r["Cliente"]).strip(),
+                producto_nombre=str(r["Producto"]).strip(),
+                cantidad=int(r.get("Cantidad", 1)),
+                monto_total=float(r.get("Monto_Total", 0.0)),
+                costo_historico=float(r.get("Costo_Historico", 0.0)),
+                comision_cobrada=bool(r.get("Comision_Cobrada", False)),
+                fecha_cobro_comision=f_com.to_pydatetime() if pd.notnull(f_com) else None
+            ))
+        session.flush()
+
+        # 7. Restaurar Abonos
+        df_a = sheets["Abonos"]
+        for _, r in df_a.iterrows():
+            f_ab = pd.to_datetime(r.get("Fecha_Abono"), errors="coerce")
+            session.add(Abono(
+                id_abono=int(r["ID_Abono"]),
+                venta_id=int(r["ID_Venta"]),
+                fecha_abono=f_ab.to_pydatetime() if pd.notnull(f_ab) else None,
+                monto_abono=float(r.get("Monto_Abono", 0.0)),
+                metodo_pago=str(r.get("Metodo_Pago", "Efectivo")).strip(),
+                comprobante_foto=str(r.get("Comprobante_Foto")).strip() if pd.notnull(r.get("Comprobante_Foto")) else None
+            ))
+        session.flush()
+
+        # 8. Restaurar Gastos
+        if "Gastos" in sheets and not sheets["Gastos"].empty:
+            df_gasto = sheets["Gastos"]
+            for _, r in df_gasto.iterrows():
+                f_g = pd.to_datetime(r.get("Fecha_Gasto"), errors="coerce")
+                session.add(Gasto(
+                    id=int(r["ID_Gasto"]),
+                    concepto=str(r["Concepto"]).strip(),
+                    monto=float(r.get("Monto", 0.0)),
+                    categoria=str(r.get("Categoria", "Otros")).strip(),
+                    fecha_gasto=f_g.to_pydatetime() if pd.notnull(f_g) else None
+                ))
+            session.flush()
+
+        # 9. Restaurar Intentos de Seguridad
+        if "Intentos_Seguridad" in sheets and not sheets["Intentos_Seguridad"].empty:
+            df_s = sheets["Intentos_Seguridad"]
+            for _, r in df_s.iterrows():
+                b_hasta = pd.to_datetime(r.get("Bloqueado_Hasta"), errors="coerce")
+                u_int = pd.to_datetime(r.get("Ultimo_Intento"), errors="coerce")
+                session.add(IntentoSeguridad(
+                    id=int(r["ID"]),
+                    identificador=str(r["Identificador"]).strip(),
+                    fallos=int(r.get("Fallos", 0)),
+                    bloqueado_hasta=b_hasta.to_pydatetime() if pd.notnull(b_hasta) else None,
+                    ultimo_intento=u_int.to_pydatetime() if pd.notnull(u_int) else None
+                ))
+            session.flush()
+
+        session.commit()
+
+        # 10. Re-sincronizar contadores/secuencias en PostgreSQL
+        if "postgresql" in str(engine.url):
+            try:
+                with engine.begin() as con:
+                    for seq, col, tbl in [
+                        ("usuarios_id_seq", "id", "usuarios"),
+                        ("productos_id_seq", "id", "productos"),
+                        ("ventas_id_seq", "id", "ventas"),
+                        ("abonos_id_abono_seq", "id_abono", "abonos"),
+                        ("gastos_id_seq", "id", "gastos"),
+                        ("catalogo_productos_id_seq", "id", "catalogo_productos"),
+                        ("grupos_inventario_id_seq", "id", "grupos_inventario")
+                    ]:
+                        try:
+                            con.execute(text(f"SELECT setval('{seq}', COALESCE((SELECT MAX({col})+1 FROM {tbl}), 1), false);"))
+                        except Exception:
+                            pass
+            except Exception as e_seq:
+                print(f"Nota al sincronizar secuencias: {e_seq}")
+
+        limpiar_cache_sistema()
+        return True, f"Base de datos restaurada exitosamente ({len(df_v)} ventas, {len(df_p)} productos, {len(df_a)} abonos, {len(df_u)} usuarios)."
+
+    except Exception as e:
+        session.rollback()
+        return False, f"Error durante la restauración: {e}"
+    finally:
+        session.close()
