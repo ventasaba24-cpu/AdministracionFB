@@ -167,19 +167,24 @@ def show():
                  limite_cantidad = 1000
                  precio_def = 0.0
             
-            # Obtener lista de clientes previos para evitar faltas de ortografía o duplicados
+            # Selector único simplificado de cliente (Afuera del form para respuesta instantánea)
             clientes_previos = sorted(list(set([str(c).strip() for c in df_todas['Cliente'].dropna().unique() if str(c).strip()]))) if not df_todas.empty else []
+            opciones_cliente = ["✍️ Registrar Cliente Nuevo..."] + clientes_previos
+            
+            sel_cliente = st.selectbox(
+                "👤 Cliente", 
+                opciones_cliente,
+                index=0,
+                help="Busca y selecciona un cliente existente para unificar su historial, o déjalo en 'Registrar Cliente Nuevo'."
+            )
             
             with st.form("venta_form", clear_on_submit=False):
                 st.markdown("### 📝 Datos de Venta")
-                if clientes_previos:
-                    sel_cl_opc = ["✍️ Escribir Cliente Nuevo..."] + clientes_previos
-                    cliente_sug = st.selectbox("👥 Cliente Frecuente (Opcional)", options=sel_cl_opc, index=0, help="Elige un cliente existente para mantener su historial unificado, o déjalo en nuevo.")
-                    cliente_val_def = cliente_sug if cliente_sug != "✍️ Escribir Cliente Nuevo..." else ""
+                if sel_cliente == "✍️ Registrar Cliente Nuevo...":
+                    cliente_input = st.text_input("👤 Nombre Completo del Cliente Nuevo", placeholder="Ej: Maria Lopez")
                 else:
-                    cliente_val_def = ""
-
-                cliente = st.text_input("👤 Nombre Completo del Cliente", value=cliente_val_def, placeholder="Ej: Maria Lopez")
+                    st.success(f"👤 Vendiendo a: **{sel_cliente}**")
+                    cliente_input = sel_cliente
                 
                 # Usar Selectbox en vez de NumberInput para la cantidad (Es más fácil en el celular)
                 opciones_cantidad = list(range(1, min(51, limite_cantidad + 1)))
@@ -200,7 +205,7 @@ def show():
                 submit_venta = st.form_submit_button("Registrar Venta")
                 
                 if submit_venta:
-                    cliente_limpio = cliente.strip() if cliente else ""
+                    cliente_limpio = cliente_input.strip() if cliente_input else ""
                     if not cliente_limpio:
                         st.error("El nombre del cliente es obligatorio.")
                     elif not producto:
